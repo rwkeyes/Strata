@@ -259,7 +259,14 @@ add_library(strata_prefill STATIC ${_prefill}
             ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/xmx_moe.dp.cpp         # A770 port: grouped XMX expert GEMM
             ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/esimd_moe.dp.cpp)       # 151-b70: fused int8 DPAS expert products (ESIMD, Battlemage)
 target_compile_options(strata_prefill PUBLIC -qmkl=sequential)
-target_link_options(strata_prefill PUBLIC -qmkl=sequential)
+# oneMKL: this port needs ONLY the BLAS domain. Checked with `nm -D --undefined-only` against the runtime
+# bundle - the engine's undefined symbols resolve to libmkl_sycl_blas alone - but -qmkl=sequential links all
+# eight SYCL domains (blas, vm, rng, sparse, dft, lapack, stats, data_fitting), 278 MB raw / 58 MB in the
+# image, and the loader then requires every one of them present. Keep the compile flag for the include paths
+# and device-side bits; narrow the link to the domains actually called.  (Dirigo payload patch, carried
+# forward from the v0.1.44.1 payload build; re-check it on every tag - the DT_NEEDED list is the gate.)
+target_link_options(strata_prefill PUBLIC
+  -L$ENV{MKLROOT}/lib -lmkl_sycl_blas -lmkl_intel_lp64 -lmkl_sequential -lmkl_core)
 target_link_libraries(strata_prefill PUBLIC strata_engine)
 
 strata_resolve(_main src/program/generate.cpp)

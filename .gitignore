@@ -95,3 +95,7 @@ node_modules/
 /build-spark/
 /build-vision-spark/
 /.venv-build/
+
+# serve/autotune.py writes its state and proposals next to the run config
+tuning-*.json
+/tuning-proposals.json

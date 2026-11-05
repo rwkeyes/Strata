@@ -24,7 +24,8 @@ class FakeEngine:
     """Speed = f(pcie_frac, spec_min_p, workers): the GEN line's tune keys arrive as `strata_tune`.
     `dies`: setting values whose engine exits during its first generation (the #267 class, mid-measurement)."""
 
-    def __init__(self, args, speed, info_workers=6, starts=None, adapt=None, read=None, reads=None, dies=()):
+    def __init__(self, args, speed, info_workers=6, starts=None, adapt=None, read=None, reads=None, dies=(),
+                 shape=None):
         self.args = list(args)
         self.read, self.reads = read, reads      # prompt read speed = read(prefill_pipe); the values it read with
         self.adapt_bonus = (adapt or {}).get(CAL.arg_value(args, "--adapt-swaps"), 1.0)
@@ -32,6 +33,7 @@ class FakeEngine:
         self.workers = int(w) if w else info_workers
         self.info = {"pool_workers": info_workers, "pcie_frac": 0.55, "spec_min_p": float(CAL.arg_value(args, "--spec-min-p") or 0)}
         self.speed = speed
+        self.shape = shape            # shape(ids, pcie, min_p) -> multiplier: the second shape's own rate
         self.last = {}
         self.proc = None
         self.dies = CAL.arg_value(args, "--adapt-swaps") in dies or CAL.arg_value(args, "--pool-workers") in dies
@@ -46,7 +48,8 @@ class FakeEngine:
                                " (the copy stream itself is not drained); restart the engine")
         tune = sampling.get("strata_tune") or {}
         rate = self.speed(tune.get("pcie_frac", 0.55), tune.get("spec_min_p", self.info["spec_min_p"]), self.workers)
-        rate *= self.adapt_bonus
+        rate *= self.adapt_bonus * (self.shape(ids, tune.get("pcie_frac", 0.55), tune.get("spec_min_p"))
+                                    if self.shape else 1.0)
         for _ in range(max_new):
             yield 1
         self.last = {"generated": max_new, "decode_ms": max_new / rate * 1000.0}
@@ -194,6 +197,9 @@ class Calibrate(unittest.TestCase):
         self.assertNotIn("--pool-workers", res["settings"])
 
     def test_fewer_workers(self):
+        # the MEASURED path (upstream's contract): the fast path derives the worker count and TUNEs the tier
+        CAL.VERIFY_WORKERS = True
+        self.addCleanup(setattr, CAL, "VERIFY_WORKERS", False)
         # a hybrid CPU: half the workers is 20% faster
         res, starts = self.run_with(lambda f, p, w: 60.0 if w == 3 else 50.0, workers=6)
         self.assertEqual(res["settings"].get("--pool-workers"), "3")
@@ -202,6 +208,9 @@ class Calibrate(unittest.TestCase):
         self.assertEqual(CAL.arg_value(starts[0], "--spec-min-p"), "0.5")   # measured against the product default
 
     def test_a_failed_restart_keeps_the_measurements_1337(self):
+        # the MEASURED path (upstream's contract): the fast path derives the worker count and TUNEs the tier
+        CAL.VERIFY_WORKERS = True
+        self.addCleanup(setattr, CAL, "VERIFY_WORKERS", False)
         # the top PCIe share wins by far; every later restart (the worker counts, the expert tier) fails to start
         n = {"starts": 0}
 
@@ -219,6 +228,9 @@ class Calibrate(unittest.TestCase):
         self.assertEqual(res["report"]["adapt"], {})
 
     def test_one_failing_worker_count_only_drops_that_candidate_1337(self):
+        # the MEASURED path (upstream's contract): the fast path derives the worker count and TUNEs the tier
+        CAL.VERIFY_WORKERS = True
+        self.addCleanup(setattr, CAL, "VERIFY_WORKERS", False)
         def start(args):
             if CAL.arg_value(args, "--pool-workers") == "3":
                 raise RuntimeError("out of memory")
@@ -228,6 +240,9 @@ class Calibrate(unittest.TestCase):
         self.assertEqual(list(res["report"]["failed_starts"]), ["3 workers"])
 
     def test_adaptive_tier(self):
+        # the MEASURED path (upstream's contract): the fast path derives the worker count and TUNEs the tier
+        CAL.VERIFY_WORKERS = True
+        self.addCleanup(setattr, CAL, "VERIFY_WORKERS", False)
         # a slow-RAM PC: swapping 160 experts per round is 10% faster, 80 is 2% (noise)
         res, starts = self.run_with(lambda f, p, w: 50.0, adapt={"160": 1.10, "80": 1.02})
         self.assertEqual([res["settings"].get(f) for f in CAL.ADAPT_FLAGS], ["1", "160", "0.97"])
@@ -250,6 +265,9 @@ class Calibrate(unittest.TestCase):
         self.assertIn("the expert tier 1/160/0.97", res["report"]["failed_starts"])
 
     def test_engine_death_during_a_worker_measurement_keeps_the_run(self):
+        # the MEASURED path (upstream's contract): the fast path derives the worker count and TUNEs the tier
+        CAL.VERIFY_WORKERS = True
+        self.addCleanup(setattr, CAL, "VERIFY_WORKERS", False)
         # 4 workers' engine dies mid-measurement: 3 and 2 are still measured, the default count stays, the tier runs
         res, _ = self.run_with(lambda f, p, w: 50.0, workers=6, dies=("4",))
         self.assertNotIn("--pool-workers", res["settings"])
@@ -393,6 +411,85 @@ class Calibrate(unittest.TestCase):
         self.assertEqual(CAL.pick({}, "a"), "a")
 
 
+    def test_a_clear_lead_is_not_confirmed_again(self):
+        """0.7 beats 0.5 by 6% in every round: the sweep already said it, so the confirmation must not re-measure
+        (on the build box that re-measurement cost 48 s of a 394 s run and repeated the same numbers)."""
+        res, _ = self.run_with(lambda f, p, w: 50.0 + (3.0 if abs(p - 0.7) < 1e-6 else 0.0))
+        self.assertEqual(res["settings"].get("--spec-min-p"), "0.70")
+        for key, samples in res["report"]["confirm"].items():
+            self.assertEqual(len(samples), 1, f"{key} was measured {len(samples)} times: {samples}")
+
+
+    def test_fine_mode_confirms_what_fast_mode_accepts(self):
+        """The same clear lead (0.7 ahead by 6% in every round): FAST accepts it on the sweep, FINE re-measures it.
+        That is the whole difference between the modes, so it is what the test pins.
+
+        `calibrate_fine` in the config (or STRATA_CAL_FINE=1, or --fine on the CLI) sets CAL.FINE in run(); the test
+        sets the module flag directly because measure() is what reads it.
+        """
+        speed = lambda f, p, w: 50.0 + (3.0 if abs(p - 0.7) < 1e-6 else 0.0)   # noqa: E731
+        fast, _ = self.run_with(speed)
+        self.assertEqual({len(v) for v in fast["report"]["confirm"].values()}, {1},
+                         f"FAST re-measured: {fast['report']['confirm']}")
+        CAL.FINE = True
+        try:
+            fine, _ = self.run_with(speed)
+        finally:
+            CAL.FINE = False
+        self.assertTrue(all(len(v) >= 2 for v in fine["report"]["confirm"].values()),
+                        f"FINE did not re-measure: {fine['report']['confirm']}")
+
+
+    def test_the_shape_check_is_deferred_by_default(self):
+        """A first run must not spend 60 s before the model has answered anything: the guard is recorded and run
+        later by tools/verify_shapes.py."""
+        CAL.CODE_IDS = [[9, 9, 9]]
+        self.assertTrue(CAL.DEFER_SHAPE)
+        try:
+            res = CAL.measure(BASE, [[1, 2, 3]] * 3,
+                              lambda a: FakeEngine(a, lambda f, p, w: 50.0 + (4.0 if abs(p - 0.7) < 1e-6 else 0.0)),
+                              say=lambda *_: None, long_prompt=lambda i, n: [1] * n)
+        finally:
+            CAL.CODE_IDS = None
+        # an unverified change is NOT applied: the default stays in the settings until the check comes back
+        self.assertIsNone(res["settings"].get("--spec-min-p"))
+        pending = res["report"].get("pending_shape")
+        self.assertIsNotNone(pending, "no deferred check was recorded")
+        self.assertEqual((pending["chosen"], pending["default"]), (0.7, 0.5))
+        self.assertIn("verify_shapes", pending["note"])
+
+    def test_a_value_that_loses_on_the_second_shape_is_not_adopted(self):
+        """The whole point of the second shape: a value that wins on the docs and loses on source text stays out.
+        --spec 4 vs 6 was a tie on prose and +5.2 % on code; the reverse is just as possible, and one shape's word is
+        not a decision."""
+        CAL.CODE_IDS, CAL.DEFER_SHAPE = [[9, 9, 9]], False      # inline check: what --verify-now asks for
+        try:
+            def speed(f, p, w):                      # on the docs: 0.7 is 8% faster
+                return 50.0 + (4.0 if abs(p - 0.7) < 1e-6 else 0.0)
+            def shape(ids, f, p):                    # on source code 0.7 is 15% slower: the ranking inverts by >3%
+                return 0.85 if ids[:1] == [9] and p is not None and abs(p - 0.7) < 1e-6 else 1.0
+            res = CAL.measure(BASE, [[1, 2, 3]] * 3,
+                              lambda a: FakeEngine(a, speed, shape=shape),
+                              say=lambda *_: None, long_prompt=lambda i, n: [1] * n)
+        finally:
+            CAL.CODE_IDS, CAL.DEFER_SHAPE = None, True
+        self.assertEqual(res["settings"].get("--spec-min-p"), None,
+                         f"a value that loses on the second shape was adopted: {res['settings']}")
+        self.assertIn("other_shape", res["report"])
+
+    def test_the_second_shape_confirms_a_value_that_wins_on_both(self):
+        CAL.CODE_IDS, CAL.DEFER_SHAPE = [[9, 9, 9]], False
+        try:
+            head = CAL.measure(BASE, [[1, 2, 3]] * 3,
+                               lambda a: FakeEngine(a, lambda f, p, w: 50.0 + (4.0 if abs(p - 0.7) < 1e-6 else 0.0),
+                                                    shape=lambda ids, f, p: 1.10 if ids[:1] == [9] else 1.0),
+                               say=lambda *_: None, long_prompt=lambda i, n: [1] * n)
+        finally:
+            CAL.CODE_IDS, CAL.DEFER_SHAPE = None, True
+        self.assertEqual(head["settings"].get("--spec-min-p"), "0.70")
+        self.assertIn("other_shape", head["report"])
+
+
 class SetupIntegration(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -489,3 +586,25 @@ class SetupIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+
+class NoStaleRenames(unittest.TestCase):
+    """A rename applied to some references and not others is a NameError that only a real run finds.
+
+    `verify_workers` became the module-level `VERIFY_WORKERS`; one reference inside run() kept the old name, so the
+    calibrator died at the adaptive-tier step after 3m36s of real measurement on the Arc - long after the unit tests
+    were green, because that line needs a loaded engine with a tune() to reach.  This test reads the source the way
+    the interpreter would: every bare `verify_workers` must be gone.
+    """
+
+    def test_no_reference_to_the_old_worker_flag(self):
+        import ast
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] / "tools" / "calibrate.py"
+        tree = ast.parse(src.read_text(encoding="utf-8"))
+        stale = [n.lineno for n in ast.walk(tree)
+                 if isinstance(n, ast.Name) and n.id == "verify_workers"]
+        self.assertEqual(stale, [], f"tools/calibrate.py still loads `verify_workers` at line(s) {stale}; "
+                                   f"the flag is VERIFY_WORKERS")

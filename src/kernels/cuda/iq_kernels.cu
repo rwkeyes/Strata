@@ -1888,6 +1888,14 @@ struct IqGridWords {
 #else
 #define STRATA_SHARED_ALIGN16_U32(name, ...) __shared__ alignas(16) uint32_t name[__VA_ARGS__]
 #endif
+// Dirigo payload build (2026-11-04): the expert-decode kernels below declare their int4 staging arrays as
+// `__shared__ alignas(16)`, which HIP clang rejects ("'alignas' attribute cannot be applied to types") - the same
+// #778 trap the macro above exists for, still present at two sites in v0.2.10.  Same two forms.
+#if defined(__HIPCC__)
+#define STRATA_SHARED_ALIGN16_INT4(name, ...) __shared__ int4 name[__VA_ARGS__] __attribute__((aligned(16)))
+#else
+#define STRATA_SHARED_ALIGN16_INT4(name, ...) __shared__ alignas(16) int4 name[__VA_ARGS__]
+#endif
 template<int TY, int NC, bool STAGE_GRID = kStageIqGrid<TY>, bool EXACT_N = false>
 __global__ void __launch_bounds__(128) mmvq_multi_kernel(const uint8_t* __restrict__ w, size_t row_bytes,
                                                          const block_q8_1* __restrict__ x, float* __restrict__ y,
@@ -2588,7 +2596,7 @@ __global__ void __launch_bounds__(256, MINB) expdec_gu_kernel(
                                                                             float* __restrict__ gate, float* __restrict__ up, int rb) {
     const int ng = *n_groups;
     if (blockIdx.y >= ng) return;
-    __shared__ alignas(16) int4 s_u[ED_NC * 2 * ED_XB];
+    STRATA_SHARED_ALIGN16_INT4(s_u, ED_NC * 2 * ED_XB);
     __shared__ float s_ds[ED_NC * ED_XB];
     STRATA_SHARED_ALIGN16_U32(s_grid_buf, EdGrid<TG>::words);
     const int tid = threadIdx.x;
@@ -2775,7 +2783,7 @@ __global__ void __launch_bounds__(256, STRATA_EXPDEC_MINB) expdec_down_kernel(co
     if (blockIdx.y >= ng) return;
     constexpr int LANES = TD == 20 ? 8 : 16;
     constexpr int RPP = (256 / LANES) * R;   // rows per pass
-    __shared__ alignas(16) int4 s_u[ED_NC * 2 * ED_HB];
+    STRATA_SHARED_ALIGN16_INT4(s_u, ED_NC * 2 * ED_HB);
     __shared__ float s_ds[ED_NC * ED_HB];
     const int tid = threadIdx.x;
     const int sw = tid / LANES, t = tid % LANES;

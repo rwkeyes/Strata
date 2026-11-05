@@ -85,6 +85,7 @@ from serve import lifeline  # noqa: E402
 from serve.structured import StructuredOutputError, prepare_format, validated_json, extract_json  # noqa: E402
 from serve import responses as responses_api  # noqa: E402
 from serve.responses import ResponsesError, error_body as responses_error_body  # noqa: E402
+from serve import prompt_kind  # noqa: E402
 from serve import images as images_api  # noqa: E402
 
 IM_END = "<|im_end|>"
@@ -290,6 +291,9 @@ KEEPALIVE_S = 10.0          # a held-back tool argument leaves the stream quiet:
 # Anthropic clients add /v1/messages to their base URL themselves. A base URL that already ends in /v1 (copied from an OpenAI-style
 # setup) makes them post /v1/v1/messages; these two paths mean the same as the real ones. Nothing else is aliased.
 V1_V1_ALIASES = {"/v1/v1/messages": "/v1/messages", "/v1/v1/messages/count_tokens": "/v1/messages/count_tokens"}
+# The endpoints that run the model.  Anything else (/props, /v1/tuning, a health check) must never be counted, or a
+# calibration attaching to a live box would think the box is busy when it is only being polled.
+MODEL_REQUEST_PATHS = ("/v1/chat/completions", "/v1/messages", "/v1/completions", "/v1/responses")
 CTX_SLACK = 8               # `strata --serve` rejects prompt + max_new + 8 > context: keep the same margin here
 
 
@@ -1601,6 +1605,49 @@ class StrataEngine:
         finally:
             ctl.release()
 
+    def tune(self, settings: dict, timeout: float = 60.0) -> dict:
+        """The runtime retune: `TUNE adapt_every=8 adapt_swaps=160` between requests changes settings of the RUNNING
+        engine -- no restart, no weight reload, no session reset (each of these settings is read out of the engine's
+        options at the moment it is used; see handle_tune in src/program/generate.cpp for the keys).  -> {"applied":
+        {key: value}, "refused": [...key=value...]}; raises ValueError when the engine refuses the whole line and
+        EngineDied when it is gone.  The caller holds the service's FIFO, as for vram()."""
+        if not self.alive():
+            raise EngineDied("the engine is not running")
+        parts = []
+        for k, v in settings.items():
+            key = str(k).strip().lstrip("-").replace("-", "_")
+            if isinstance(v, bool):
+                v = int(v)
+            parts.append(f"{key}={v}")
+        if not parts:
+            raise ValueError("tune() needs at least one setting")
+        self.proc.stdin.write("TUNE " + " ".join(parts) + "\n")
+        self.proc.stdin.flush()
+        deadline = time.time() + timeout
+        while True:
+            try:
+                line = self.lines.get(timeout=max(0.1, deadline - time.time()))
+            except queue.Empty:
+                raise EngineDied("the engine did not answer the TUNE command") from None
+            if line is None:
+                raise EngineDied("the engine ended")
+            line = line.strip()
+            if line.startswith("ERR"):
+                raise ValueError(line[4:].strip() or "the engine refused the TUNE command")
+            if line.startswith("TUNED"):
+                head, _, tail = line[5:].strip().partition("refused:")
+                applied: dict = {}
+                for kv in head.split():
+                    k, _, v = kv.partition("=")
+                    if not k or not v:
+                        continue
+                    try:
+                        applied[k] = int(v) if v.lstrip("-").isdigit() else float(v)
+                    except ValueError:                      # e.g. a note glued to the value
+                        applied[k] = v
+                refused = [t for t in tail.replace("(", " ").replace(")", " ").split() if "=" in t]
+                return {"applied": applied, "refused": refused}
+
     def vram(self, reserve_mib: int | None, timeout: float = 120.0) -> dict:
         with self._exclusive_control():
             return self._vram(reserve_mib, timeout)
@@ -1689,6 +1736,16 @@ class StrataEngine:
                 v = tune.get(k)
                 if isinstance(v, (int, float)) and not isinstance(v, bool) and 0.0 <= float(v) <= 1.0:
                     keys += f" {k}={float(v)!r}"
+            # the draft depth for THIS request: the engine takes it per request and clamps it to 2..--spec
+            # (a deeper window than the engine was started with is refused there, not here)
+            v = tune.get("spec")
+            if (isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer()
+                    and 2 <= int(v) <= 32):
+                keys += f" spec={int(v)}"
+            # prompt-lookup windows for THIS request: 0 off, 1 as the engine was started (--suffix-draft)
+            v = tune.get("lookup")
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() and int(v) in (0, 1):
+                keys += f" lookup={int(v)}"
             # a layer split's prompt chunks (--prefill-pipe): 0 off, 1 evened out, > 1 the rig's b/a in tokens
             v = tune.get("prefill_pipe")
             if isinstance(v, (int, float)) and not isinstance(v, bool) and 0.0 <= float(v) <= 262144.0:
@@ -4794,6 +4851,26 @@ class Service:
         from serve.prometheus import Latencies
         self.latencies = Latencies()                     # GET /metrics in Prometheus text: the latency histograms
         self.last_request_at = None                      # when a request last started or finished
+        # Per-request retune by the kind of answer the prompt asks for (serve/prompt_kind.py).  OFF by default:
+        # the profile's values must come from a measurement on this box, never from a guess.
+        self.code_tune_mode = "off"
+        self.code_tune_profiles: dict = {}
+        self.code_tune_stats = {"labelled": {"code": 0, "prose": 0}, "applied": {"code": 0, "prose": 0},
+                                "shadowed": {"code": 0, "prose": 0}, "last": None}
+        # Thinking budget by prompt: a request that asks for a short direct answer does not pay for a thinking
+        # block (measured on this box: 313-405 reasoning characters before a one-line answer).  off | shadow | on.
+        self.thinking_policy = "off"
+        # Short-answer depth: when the ANSWER budget is short the draft chain does not need the full depth
+        # (spec 4 vs 6 at max_tokens 8: +11.3 % decode, -1.9 % wall, 20 prompts x 2 rounds).  Keyed on
+        # max_tokens, never on the prompt kind - at 128-token answers 6 is best.  0 = off.
+        self.short_spec = 0
+        self.short_spec_max_tokens = 16
+        self.short_spec_stats = {"applied": 0, "last": None}
+        self.thinking_stats = {"direct": 0, "reason": 0, "applied": 0, "shadowed": 0, "last": None}
+        # Request accounting for a calibration that attaches to a LIVE server: it has to prove the box is idle before
+        # a sweep and that nothing arrived during one.  `totals["requests"]` already existed for /v1/status and was
+        # never incremented; that is the counter now, so there is one number and not two.  `in_flight` is new.
+        self.in_flight = 0
         self.started_at = time.time()
         self.instance_id = uuid.uuid4().hex
         self.status_lock = threading.Lock()
@@ -5511,11 +5588,13 @@ class Service:
                 if req.get("reasoning_effort") in (None, "") and not req.get("reasoning") and \
                         "enable_thinking" not in ctk and "reasoning_effort" not in ctk:
                     req["reasoning_effort"] = effort
+                    req["_effort_from_shared"] = True      # the server's default, not the client's choice
             elif not req.get("thinking") and not req.get("output_config"):
                 if effort == "none":
                     req["thinking"] = {"type": "disabled"}
                 else:
                     req["output_config"] = {"effort": effort}
+                req["_effort_from_shared"] = True
         return req
 
     def start_telemetry(self):
@@ -5567,6 +5646,172 @@ class Service:
         with self.status_lock:
             reading = self.status.get("busy") and self.status.get("first_token") is None
         return getattr(self.engine, "prefill_tok_s_mean", None) if reading else 0.0
+
+    def count_request_in(self) -> None:
+        """One model request entered.  It does NOT touch totals["requests"]: the generation path already counts a
+        finished request there (openai_chunks), and a second incrementer made every request read as two.  What is new
+        is only the in-flight count - the number a live-box calibration asks for and the server never kept."""
+        with self.status_lock:
+            self.in_flight += 1
+            self.last_request_at = time.time()
+
+    def count_request_out(self) -> None:
+        with self.status_lock:
+            self.in_flight = max(0, self.in_flight - 1)
+            self.last_request_at = time.time()
+
+    def request_counts(self) -> dict:
+        """{"served": N, "busy": b, "idle_s": s}: what a live-box calibration proves idleness with.  `served` is the
+        same number /v1/status reports as activity.requests - one counter, two readers."""
+        with self.status_lock:
+            idle = round(time.time() - self.last_request_at, 1) if self.last_request_at else None
+            return {"served": self.totals.get("requests", 0), "busy": self.in_flight, "idle_s": idle}
+
+    def set_code_tune(self, mode: str, profiles: dict | None = None) -> None:
+        """Turn on the per-request retune.  `profiles` is {kind: {key: value}} with the engine's per-request keys
+        (`spec_min_p`, `pcie_frac`); a kind with no profile is left alone."""
+        self.code_tune_mode = mode if mode in ("off", "shadow", "on") else "off"
+        self.code_tune_profiles = {k: {kk: float(vv) for kk, vv in (v or {}).items()
+                                      if kk in ("spec_min_p", "pcie_frac", "spec", "lookup")}
+                                  for k, v in (profiles or {}).items() if k in ("code", "prose")}
+        if self.code_tune_mode != "off":
+            print(f"[strata] code-tune: {self.code_tune_mode}, profile {self.code_tune_profiles or '{} (labels only)'}",
+                  flush=True)
+
+    def code_tune_report(self) -> dict:
+        return {"mode": self.code_tune_mode, "profiles": self.code_tune_profiles,
+                **{k: v for k, v in self.code_tune_stats.items() if k != "last"}}
+
+    def _code_tune_say(self, what: str) -> None:
+        """One line per CHANGE of decision: a per-request line would be as noisy as the engine's own log."""
+        if what == self.code_tune_stats.get("last"):
+            return
+        self.code_tune_stats["last"] = what
+        print(f"[strata] code-tune: {what}", flush=True)
+
+    def code_tune_sampling(self, ids, sampling: dict) -> dict:
+        """Retune THIS request for the kind of answer its prompt asks for.
+
+        The keys it sets are the engine's own per-request ones (`spec_min_p`, `pcie_frac`), so nothing global
+        changes: the next request gets its own value, and a caller's own `strata_tune` always wins.  `shadow`
+        labels and logs; `on` also applies.  Classify the prompt's own text - no model, no extra request.
+        """
+        if self.code_tune_mode == "off" or not ids:
+            return sampling
+        try:
+            text = self.tok.decode(list(ids)[-8192:], errors="replace")
+            label = prompt_kind.classify(text)
+        except Exception:                       # noqa: BLE001 - a decode or classify failure must not fail a request
+            return sampling
+        self.code_tune_stats["labelled"][label.kind] += 1
+        have: dict = {}
+        raw = sampling.get("strata_tune")
+        if isinstance(raw, dict):
+            have = dict(raw)
+        want = {k: float(v) for k, v in (self.code_tune_profiles.get(label.kind) or {}).items() if k not in have}
+        if not want:
+            return sampling
+        setting = " ".join(f"{k}={v:g}" for k, v in want.items())
+        if self.code_tune_mode == "shadow":
+            self.code_tune_stats["shadowed"][label.kind] += 1
+            self._code_tune_say(f"{label} -> would set {setting} (shadow)")
+            return sampling
+        self.code_tune_stats["applied"][label.kind] += 1
+        self._code_tune_say(f"{label} -> {setting}")
+        return {**sampling, "strata_tune": {**have, **want}}
+
+    def set_thinking_policy(self, mode: str) -> None:
+        self.thinking_policy = mode if mode in ("off", "shadow", "on") else "off"
+        if self.thinking_policy != "off":
+            print(f"[strata] thinking policy: {self.thinking_policy}", flush=True)
+
+    def thinking_report(self) -> dict:
+        return {"mode": self.thinking_policy,
+                **{k: v for k, v in self.thinking_stats.items() if k != "last"}}
+
+    @staticmethod
+    def client_asked_for_thinking(req, kwargs: dict) -> bool:
+        """True when the REQUEST names a thinking level or turns thinking off (a server-filled default does not
+        count: with_shared() writes reasoning_effort on every request when a shared level exists, which silently
+        disabled this policy before)."""
+        if kwargs.get("enable_thinking") is False:
+            return True
+        if not isinstance(req, dict):
+            return "reasoning_effort" in kwargs
+        if req.get("_effort_from_shared"):
+            return False
+        if req.get("reasoning_effort") not in (None, ""):
+            return True
+        if isinstance(req.get("reasoning"), dict) and req["reasoning"].get("effort"):
+            return True
+        ctk = req.get("chat_template_kwargs")
+        if isinstance(ctk, dict) and ("reasoning_effort" in ctk or "enable_thinking" in ctk):
+            return True
+        if req.get("output_config") or req.get("thinking"):
+            return True
+        return False
+
+    def apply_thinking_policy(self, messages, kwargs: dict, req=None) -> None:
+        """Turn thinking OFF for a request that asks for a short, direct answer - in place, before the prompt is
+        rendered, so the template and the parser agree (they read the same kwargs).
+
+        Never overrides a client: `enable_thinking: false` or any `reasoning_effort` is left exactly as sent, and a
+        code prompt keeps its thinking (a bug or a design question is where thinking earns its tokens).
+        """
+        if self.thinking_policy == "off":
+            return
+        if self.client_asked_for_thinking(req, kwargs):
+            return
+        try:
+            verdict = prompt_kind.wants_direct_answer(prompt_kind.messages_text(messages))
+        except Exception:                       # noqa: BLE001 - a classifier failure must not fail a request
+            return
+        self.thinking_stats[verdict.kind] += 1
+        if verdict.kind != "direct":
+            return
+        if self.thinking_policy == "shadow":
+            self.thinking_stats["shadowed"] += 1
+            if self.thinking_stats["last"] != str(verdict):
+                self.thinking_stats["last"] = str(verdict)
+                print(f"[strata] thinking policy: would turn thinking off ({verdict})", flush=True)
+            return
+        self.thinking_stats["applied"] += 1
+        if self.thinking_stats["last"] != str(verdict):
+            self.thinking_stats["last"] = str(verdict)
+            print(f"[strata] thinking policy: thinking off ({verdict})", flush=True)
+        kwargs.pop("reasoning_effort", None)
+        kwargs["enable_thinking"] = False
+
+    def set_short_spec(self, spec, max_tokens) -> None:
+        self.short_spec = spec if isinstance(spec, int) and not isinstance(spec, bool) and 2 <= spec <= 32 else 0
+        self.short_spec_max_tokens = (max_tokens if isinstance(max_tokens, int) and not isinstance(max_tokens, bool)
+                                      and max_tokens > 0 else 16)
+        if self.short_spec:
+            print(f"[strata] short-answer depth: spec {self.short_spec} when max_tokens <= "
+                  f"{self.short_spec_max_tokens}", flush=True)
+
+    def short_spec_report(self) -> dict:
+        return {"spec": self.short_spec, "max_tokens": self.short_spec_max_tokens,
+                "applied": self.short_spec_stats["applied"]}
+
+    def apply_short_spec(self, sampling, max_new):
+        """spec=N for a request whose ANSWER BUDGET is short.  The client's own strata_tune always wins."""
+        if not self.short_spec or not isinstance(sampling, dict) or not max_new or max_new <= 0:
+            return sampling
+        if max_new > self.short_spec_max_tokens:
+            return sampling
+        tune = sampling.get("strata_tune")
+        tune = dict(tune) if isinstance(tune, dict) else {}
+        if "spec" in tune:
+            return sampling
+        tune["spec"] = self.short_spec
+        self.short_spec_stats["applied"] += 1
+        if self.short_spec_stats["last"] != max_new:
+            self.short_spec_stats["last"] = max_new
+            print(f"[strata] short-answer depth: spec {self.short_spec} (max_tokens {max_new})", flush=True)
+        out = dict(sampling)
+        out["strata_tune"] = tune
+        return out
 
     def begin_request(self, path, req):
         """#332: a monitor record for this request, or None when the monitor is off (nothing is kept then)."""
@@ -5834,6 +6079,7 @@ class Service:
         """-> (ids, thinking, max_new). An unset or non-positive max_new (some clients send -1) means "unlimited":
         the rest of the context.  `force` (forced_call): without thinking the reply starts with it, so it ends the
         prompt; with thinking, Service.run writes it once the thinking is over."""
+        self.apply_thinking_policy(messages, kwargs, req)   # before the render: the template and the parser share kwargs
         # `cancel` (#1999): set when the client hangs up; the downloads, the wait for the turn and the encodes stop
         # between pictures and raise ClientGone
         # Cached tool images are references in browser history, never arbitrary file paths or huge base64 strings.
@@ -6143,6 +6389,7 @@ class Service:
     def run(self, ids, thinking, tools, max_new, sampling, cancel, force=None,
             declared_only=False, deferred=False) -> Iterator[tuple[str, object]]:
         """The request's events (see _run); with "prevent_sleep" in the config, the PC stays awake while it runs or waits."""
+        sampling = self.code_tune_sampling(ids, sampling or {})
         ka = self.keep_awake
         if ka is not None:
             ka.acquire()
@@ -6163,6 +6410,7 @@ class Service:
             req_values = {k: v for k, v in (sampling or {}).items() if v is not None}
             sampling = {**defaults, **req_values}
         # #123: read after the merge, so a budget shared through POST /settings is seen like the other keys
+        sampling = self.apply_short_spec(sampling, max_new)
         budget = self.reasoning_budget(sampling) if thinking else None
         if thinking and not budget and self.answer_room and max_new and max_new >= ANSWER_ROOM_MIN_CAP:
             # 0.1.45: max_tokens counts the thinking too.  A client that caps the reply at 8192 (the desktop agent's
@@ -8123,6 +8371,20 @@ def make_handler(svc: Service):
                         slots = [{"id": 0, "n_ctx": svc.reported_ctx(), "is_processing": busy,
                                   "n_prompt_tokens": in_use}]
                     self._json(200, slots if loaded else [])
+            elif path == "/v1/tuning":
+                if self._authorized_telemetry():
+                    tuner = getattr(svc, "tuner", None)
+                    report = tuner.report() if tuner else \
+                        {"mode": "off", "note": "the tuner is not running (start the server with "
+                                                "--auto-tune shadow|on)"}
+                    # the exact request accounting a calibration needs to prove this box is idle (the tuner's own
+                    # `seen` only counts what its sampling admitted, which is a weaker statement)
+                    report["requests"] = svc.request_counts()
+                    report["code_tune"] = svc.code_tune_report()
+                    report["thinking"] = svc.thinking_report()
+                    report["short_answer"] = svc.short_spec_report()
+                    self._json(200, report)
+                    return
             elif path == "/v1/status":
                 if self._authorized():
                     self._json(200, svc.v1_status())
@@ -8130,10 +8392,16 @@ def make_handler(svc: Service):
                 self._json(404, {"error": {"message": "not found"}})
 
         def do_POST(self):
+            counted = self.path.split("?")[0].rstrip("/") in MODEL_REQUEST_PATHS
+            if counted:
+                svc.count_request_in()
             try:
                 self._post()
             except BadBody as e:                              # #893: a malformed or oversized chunked body
                 self._json(e.status, {"error": {"type": "invalid_request_error", "message": str(e)}})
+            finally:
+                if counted:
+                    svc.count_request_out()
 
         def _post(self):
             if not self._authorized():
@@ -8225,6 +8493,25 @@ def make_handler(svc: Service):
                             svc.fifo.release()
                         result = "loaded"
                     self._json(200, {"status": result, **svc.v1_status()})
+                    return
+                if path == "/v1/tune":                       # the runtime retune, for an operator or a tuner
+                    if not self._authorized_telemetry():
+                        return
+                    try:
+                        # the body was parsed into `req` for this family of paths, above: do not read it twice
+                        body = req if isinstance(req, dict) else {}
+                        settings = body.get("settings")
+                        if not isinstance(settings, dict) or not settings:
+                            self._json(400, {"error": {"message": "expected {\"settings\": {flag: value, ...}}"}})
+                            return
+                        if not (getattr(svc, "status", {}) or {}).get("busy"):
+                            reply = svc.engine.tune(settings)
+                            self._json(200, {"engine": "ok", **reply})
+                        else:
+                            self._json(409, {"error": {"message": "a request is in flight; TUNE applies between "
+                                                                  "requests"}})
+                    except Exception as e:                   # noqa: BLE001 - a refused TUNE is not a server error
+                        self._json(400, {"error": {"message": f"{type(e).__name__}: {e}"}})
                     return
                 if path == "/v1/vram":                       # #533: give VRAM back to other programs, or take it
                     if not self._own_page("the VRAM reserve can be changed"):
@@ -9408,7 +9695,7 @@ def sampling_defaults_from_config(cfg: dict) -> dict:
         elif key == "strata_tune":           # a saved tuning's per-request settings (strata_control/presets.py)
             if not isinstance(value, dict):
                 raise SystemExit(f"[strata] config sampling.strata_tune={value!r}: expected an object")
-            out[key] = {k: v for k, v in value.items() if k in ("pcie_frac", "spec_min_p", "aux_cpus")}
+            out[key] = {k: v for k, v in value.items() if k in ("pcie_frac", "spec_min_p", "aux_cpus", "spec", "lookup")}
         elif key == "experimental_speed_projection":
             if not isinstance(value, bool):
                 raise SystemExit(f"[strata] config sampling.experimental_speed_projection={value!r}: expected true or "
@@ -9903,6 +10190,25 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
     ap.add_argument("--no-fit-max-tokens", action="store_true",
                     help="answer 400 when prompt + max_tokens does not fit the context, like llama.cpp "
                          "(also \"fit_max_tokens\": false in the config). A prompt that alone does not fit is always 400")
+    ap.add_argument("--auto-tune", choices=["off", "shadow", "on"], default=os.environ.get("STRATA_AUTO_TUNE", "shadow"),
+                    help="hot-tune this install from the requests it serves: off (nothing), shadow (classify and "
+                         "record what it would do; change nothing - the default), on (explore and apply between "
+                         "requests through TUNE).  Settings set on the command line are never touched.  See "
+                         "serve/autotune.py and /v1/tuning.")
+    ap.add_argument("--auto-tune-budget", type=float, default=240.0,
+                    help="with --auto-tune on: how many requests this session may carry an experimental value "
+                         "(default 240; each arm request sits between two baseline requests)")
+    ap.add_argument("--thinking-policy", choices=["off", "shadow", "on"], default=None,
+                    help="do not pay for a thinking block on a request that asks for a short direct answer "
+                         "(extraction, formatting, translation, a one-word reply; serve/prompt_kind.py "
+                         "wants_direct_answer).  off (default) | shadow (log what it would do) | on.  A client's own "
+                         "reasoning_effort/enable_thinking is never overridden, and a code prompt keeps its thinking.")
+    ap.add_argument("--code-tune", choices=["off", "shadow", "on"], default=None,
+                    help="retune every request for the kind of answer its prompt asks for (serve/prompt_kind.py): "
+                         "off (default), shadow (label each request and log what it would set; change nothing), "
+                         "on (apply the run config's code_tune profile through the engine's per-request keys). "
+                         "The values come from \"code_tune\": {\"mode\": ..., \"code\": {\"spec_min_p\": ...}, "
+                         "\"prose\": {...}} in the config - never from a default.")
     ap.add_argument("--api-key", default=os.environ.get("STRATA_API_KEY", ""),
                     help="require this key on /v1/* (Authorization: Bearer ... or x-api-key); also $STRATA_API_KEY. "
                          "Several keys: separate them with commas (key1,key2), as llama.cpp does")
@@ -10193,6 +10499,35 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
                   sampling_defaults=sampling_defaults,
                   fit_max_tokens=a.fit_max_tokens or (not a.no_fit_max_tokens and cfg.get("fit_max_tokens") is not False))
     svc.launch_attestation = launch_attestation
+    svc.tuner = None
+    try:
+        if a.auto_tune != "off" and a.engine == "strata":
+            from serve.autotune import AutoTuner
+            _flag_to_setting = {"--pcie-frac": "pcie_frac", "--spec-min-p": "spec_min_p",
+                                "--adapt-every": "adapt_every", "--adapt-swaps": "adapt_swaps",
+                                "--adapt-decay": "adapt_decay", "--adapt-min-gain": "adapt_min_gain",
+                                "--prompt-cache": "prompt_cache", "--short-read": "short_read"}
+            _args = list(cfg.get("args") or [])
+            _pinned = {_flag_to_setting[f] for f in _flag_to_setting if f in _args}
+            svc.tuner = AutoTuner(cfg=cfg, engine=engine, service=svc, model=default_model_name(cfg),
+                                  mode=a.auto_tune, pinned=_pinned, say=print)
+            svc.tuner.explore_cap = int(a.auto_tune_budget)
+            svc.tuner.start()
+    except Exception as _e:                       # a tuner that cannot start must never stop the server
+        print(f"[strata] auto-tune unavailable: {type(_e).__name__}: {_e}", flush=True)
+        svc.tuner = None
+    _ct = cfg.get("code_tune")
+    _ct = dict(_ct) if isinstance(_ct, dict) else {}
+    svc.set_code_tune(a.code_tune or _ct.get("mode") or "off",
+                      {k: v for k, v in _ct.items() if k in ("code", "prose") and isinstance(v, dict)})
+    _sa = cfg.get("short_answer")
+    if isinstance(_sa, dict):
+        try:
+            svc.set_short_spec(_sa.get("spec", 0), _sa.get("max_tokens", 16))
+        except (TypeError, ValueError):
+            print("[strata] short_answer in the config is malformed - ignored", flush=True)
+    _tp = cfg.get("thinking_policy")
+    svc.set_thinking_policy(a.thinking_policy or (_tp if isinstance(_tp, str) else "") or "off")
     if (cfg.get("arch") or "") == "deepseek41" and vision is None and a.engine == "strata":
         # DeepSeek-V4.1 reads pictures with the engine's own tower (--vision on, the default): no separate reader process.
         # `--vision off` in the config's args, or a pack without a tower, leaves svc.vision None: pictures are refused with the 400 as before.

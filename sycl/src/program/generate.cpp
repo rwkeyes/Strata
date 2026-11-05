@@ -9147,10 +9147,10 @@ int main(int argc, char **argv) try {
         std::string line;
         int64_t rounds = 0;
         const int S = o.spec;
-        const int S_mtp = o.mtp_max_t > 0 ? std::min(o.mtp_max_t, S) : S;   // the MTP's windows; suffixes go up to S
-        if (use_mtp && S_mtp < S) mtp.set_max_drafts(S_mtp - 1);
+        const int S_mtp_max = o.mtp_max_t > 0 ? std::min(o.mtp_max_t, S) : S;   // the MTP's windows; suffixes go up to S
+        if (use_mtp && S_mtp_max < S) mtp.set_max_drafts(S_mtp_max - 1);
         // --pipeline-windows 2 loads the drafter with 8 rows: the serial loop's chain keeps its own length
-        else if (use_mtp && mtp.max_t() > S_mtp) mtp.set_max_drafts(S_mtp - 1);
+        else if (use_mtp && mtp.max_t() > S_mtp_max) mtp.set_max_drafts(S_mtp_max - 1);
         strata::spec::SuffixDrafter sfx(std::max(1, o.suffix_draft), 64, (size_t) o.max_context + 4096);
         strata::spec::DraftPolicy policy(S);   // MTP or lookup window, learned over the whole process
         // The vision path (--vision): GENI <max_new> <embeddings file> <id,id,...> carries images.  The file is one
@@ -9810,6 +9810,70 @@ int main(int argc, char **argv) try {
                 if (!pump(false)) return false;
             return true;
         };
+        // ============================ the runtime retune (TUNE), between requests ============================
+        //
+        // `TUNE adapt_every=8 adapt_swaps=160 adapt_decay=0.97 spec_min_p=0.4` changes settings of the RUNNING
+        // engine: no restart, and the weights, the expert tiers and the session state are untouched.  Every key
+        // below is read out of `o` at the moment the engine USES it, and a TUNE line only arrives between requests
+        // (the dispatch sits after the QUIT check, before the request's busy scope), so nothing is in flight when
+        // the field is written.
+        //
+        // This is what makes a calibration cheap: these are the settings whose measurement used to cost an engine
+        // start each (and one model load with it).  Deliberately NOT here, because they size memory or the session
+        // at load and belong to the rebuild class: --spec, the --kv/--max-context family, --expert-cache and the
+        // resident tiers, --pcie-mode, --prefill-chunk's ceiling (a chunk only goes down), and every graph/native flag.
+        const int64_t tune_prefill_max = o.prefill_chunk > 0 ? o.prefill_chunk : 0;   // a chunk may only go DOWN
+        auto handle_tune = [&](const std::string& l) {
+            std::string applied, refused;
+            std::istringstream in(l.size() > 4 ? l.substr(5) : std::string());
+            std::string kv;
+            while (in >> kv) {
+                const size_t eq = kv.find('=');
+                const std::string k = eq == std::string::npos ? kv : kv.substr(0, eq);
+                char* end = nullptr;
+                const double v = eq == std::string::npos ? 0.0 : std::strtod(kv.c_str() + (ptrdiff_t) eq + 1, &end);
+                // a value must be a number and must be there: "adapt_swaps=abc" is a typo, not a request for 0
+                const bool known = eq != std::string::npos && end != nullptr && end != kv.c_str() + eq + 1 &&
+                                   *end == '\0' && v >= 0.0;
+                if (known && k == "adapt_every") {
+                    o.adapt_every = (int) v;
+                    applied += " adapt_every=" + std::to_string(o.adapt_every);
+                } else if (known && k == "adapt_swaps") {
+                    o.adapt_swaps = (int) v;
+                    applied += " adapt_swaps=" + std::to_string(o.adapt_swaps);
+                } else if (known && k == "adapt_decay") {
+                    o.adapt_decay = (float) std::clamp(v, 0.0, 1.0);
+                    applied += " adapt_decay=" + std::to_string(o.adapt_decay);
+                } else if (known && k == "prefill_chunk") {
+                    o.prefill_chunk = tune_prefill_max > 0 ? std::min<int64_t>((int64_t) v, tune_prefill_max)
+                                                           : (int64_t) v;
+                    applied += " prefill_chunk=" + std::to_string((long long) o.prefill_chunk);
+                    if (tune_prefill_max > 0 && (int64_t) v > tune_prefill_max)
+                        applied += "(capped at the startup chunk)";
+                } else if (known && k == "pcie_frac") {
+                    o.pcie_frac = std::clamp(v, 0.0, 1.0);
+                    applied += " pcie_frac=" + std::to_string(o.pcie_frac);
+                } else if (known && k == "spec_min_p") {
+                    o.spec_min_p = std::clamp(v, 0.0, 1.0);
+                    applied += " spec_min_p=" + std::to_string(o.spec_min_p);
+                } else if (known && k == "prompt_cache") {
+                    o.prompt_cache = (int) v;
+                    applied += " prompt_cache=" + std::to_string(o.prompt_cache);
+                } else if (known && k == "prompt_cache_every") {
+                    o.prompt_cache_every = (int64_t) v;
+                    applied += " prompt_cache_every=" + std::to_string((long long) o.prompt_cache_every);
+                } else if (known && k == "short_read") {
+                    o.short_read = (int64_t) v;
+                    applied += " short_read=" + std::to_string((long long) o.short_read);
+                } else {
+                    refused += " " + kv + "(unknown key, or a value it cannot take)";
+                }
+            }
+            std::string out = applied.empty() ? std::string("TUNED none") : ("TUNED" + applied);
+            if (!refused.empty()) out += " refused:" + refused;
+            std::printf("%s\n", out.c_str());
+            std::fflush(stdout);
+        };
         for (;;) {
             if (batch_on() || (piped && pipe_inflight())) {
                 if (!try_next_line(line)) {
@@ -9858,6 +9922,8 @@ int main(int argc, char **argv) try {
                 Clock::now() - profile_saved_at >= std::chrono::duration<double>(o.expert_profile_save_min * 60.0))
                 save_profile("periodic");
             if (line == "QUIT") break;
+            // the runtime retune: not a request, so it is handled before the busy scope and touches no session
+            if (line.rfind("TUNE", 0) == 0 && (line.size() == 4 || line[4] == ' ')) { handle_tune(line); continue; }
             // the watchdog watches a request from here until this iteration ends, whichever way it ends
             struct BusyScope {
                 BusyScope() {
@@ -10124,6 +10190,8 @@ int main(int argc, char **argv) try {
             // prompt order; the conversation cache matches a picture by it and its grid instead of its embedding floats
             std::vector<uint64_t> req_img_keys;
             double req_pcie_frac = o.pcie_frac, req_spec_min_p = o.spec_min_p;
+            int req_spec = 0;        // spec=N: this request's draft depth (2..--spec; down only)
+            int req_lookup = -1;     // lookup=0|1: this request's prompt-lookup windows (-1 = the start's)
             if (endp != nullptr) {   // GENI takes the same keys (#75: image requests were always greedy); its
                                      // embedding file path is the first token without an =
                 for (;;) {
@@ -10162,6 +10230,8 @@ int main(int argc, char **argv) try {
                     }
                     else if (key == "pcie_frac") req_pcie_frac = std::clamp((double) fv, 0.0, 1.0);
                     else if (key == "spec_min_p") req_spec_min_p = std::clamp((double) fv, 0.0, 1.0);
+                    else if (key == "spec") req_spec = std::atoi(tok.c_str() + eq + 1);
+                    else if (key == "lookup") req_lookup = std::atoi(tok.c_str() + eq + 1) != 0 ? 1 : 0;
                     else if (key == "img_keys") {
                         req_img_keys.clear();
                         const char* q = tok.c_str() + eq + 1;
@@ -10177,6 +10247,13 @@ int main(int argc, char **argv) try {
                     // unknown keys are skipped: the ids start at the first token without '='
                 }
             }
+            // this request's draft depth: DOWN only (the verifier rows and buffers were sized from --spec at
+            // load).  Shadowing the start-up value from here on is the whole mechanism: every window loop below
+            // reads S_mtp, and the drafter's chain is simply not exhausted.
+            const int S_mtp = req_spec > 0 ? std::clamp(req_spec, 2, S_mtp_max) : S_mtp_max;
+            // lookup=0: no prompt-lookup window for THIS request; the suffix drafter and the policy stay as they
+            // are, the source is simply never asked (a request whose answer is not a repeat of its prompt)
+            const bool req_suffix_ok = req_lookup != 0;
             std::string emb_path;
             if (geni && endp != nullptr) {
                 while (*endp == ' ') ++endp;
@@ -11206,7 +11283,7 @@ int main(int argc, char **argv) try {
             std::vector<int32_t> drafts(DS, 0), window((size_t) S), outv((size_t) S);
             std::vector<float> dprob(DS, 0.0f);
             std::vector<int32_t> sbuf((size_t) S, 0);
-            const bool sfx_on = o.suffix_draft > 0 || o.lookup_chain > 0;
+            const bool sfx_on = (o.suffix_draft > 0 || o.lookup_chain > 0) && req_suffix_ok;
             if (sfx_on) {
                 sfx.reset();
                 for (int64_t t : ids) sfx.append((int32_t) t);
@@ -11578,7 +11655,7 @@ int main(int argc, char **argv) try {
                     return v ? (float) std::atof(v) : 0.75f;
                 }();
                 auto pick_lookup = [&](PW& w, const int32_t* chain0) {
-                    if (o.suffix_draft <= 0 || w.seq == 0) return;
+                    if (!sfx_on || w.seq == 0) return;
                     const int k = sfx.propose(2 * S - 1, pl_sbuf.data());
                     const int match = sfx.last_match();
                     if (k <= 0 || pl_sbuf[0] != chain0[0]) return;
@@ -11838,7 +11915,7 @@ int main(int argc, char **argv) try {
                         std::printf("T %d\n", (int) outp[(size_t) i]);
                         strata::core::progress_beat();
                         ++produced_n;
-                        if (o.suffix_draft > 0) sfx.append(outp[(size_t) i]);
+                        if (sfx_on) sfx.append(outp[(size_t) i]);
                         eos = std::find(o.eos_ids.begin(), o.eos_ids.end(), (int64_t) outp[(size_t) i]) != o.eos_ids.end();
                     }
                     std::fflush(stdout);
@@ -13357,7 +13434,7 @@ int main(int argc, char **argv) try {
         int64_t dfr_pos = 0;
         int32_t dfr_anchor = 0;
         auto defer_df2 = [&](int a_) -> bool {
-            if (!use_df2 || o.suffix_draft <= 0 || df2_skip_min <= 0) return false;
+            if (!use_df2 || !sfx_on || df2_skip_min <= 0) return false;
             const int ks = sfx.propose(o.spec - 1, sbuf.data());
             if (!strata::spec::skip_draft_for_lookup(true, df2_skip_min, ks, sfx.last_match())) return false;
             df2_deferred = true; dfr_n = a_ + 1; dfr_pos = p; dfr_anchor = outv[(size_t) a_];
@@ -13401,7 +13478,7 @@ int main(int argc, char **argv) try {
             if (first_window) T = 1;
             bool from_sfx = false;
             int sfx_match = 0;
-            if (o.suffix_draft > 0 && !first_window) {
+            if (sfx_on && !first_window) {
                 const int k = sfx.propose(o.spec - 1, sbuf.data());
                 sfx_match = sfx.last_match();
                 if (k > 0 && (!draft_on || sbuf[0] == drafts[0])) {
@@ -13585,7 +13662,7 @@ int main(int argc, char **argv) try {
             for (size_t i = 1; i < window_hist.size(); ++i) std::printf(" T%zu:%lld", i, (long long) window_hist[i]);
             std::printf("  (min draft probability %.2f)\n", o.spec_min_p);
         }
-        if (o.suffix_draft > 0)
+        if (sfx_on)
             std::printf("%-24s %lld windows, drafts accepted %lld of %lld\n", "suffix drafts", (long long) sfx_windows,
                         (long long) sfx_ok, (long long) sfx_drafts);
         if (o.lookup_chain > 0)

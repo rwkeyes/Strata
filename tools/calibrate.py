@@ -35,6 +35,7 @@ adaptive expert tier and the OS make single measurements noisy by a few percent.
 """
 from __future__ import annotations
 
+import os
 import json
 import statistics
 import sys
@@ -104,6 +105,32 @@ def with_arg(args: list[str], flag: str, value: str | None) -> list[str]:
     return out
 
 
+def derived_workers() -> int | None:
+    """The engine's own plan for --pool-workers, from this PC's topology: every physical core but the one the host
+    thread sits on, counting ONE socket on a 2-socket PC.  It is the rule cpu::plan_pool_workers applies at startup
+    (pool_plan_test.cpp: 8c/16t -> 7 workers, 6c/12t -> 5), which is why the default is usually the winner and the
+    sweep only confirmed it -- at 3-5 engine restarts."""
+    try:
+        base = Path("/sys/devices/system/cpu")
+        cores, sockets = set(), set()
+        for d in sorted(base.glob("cpu[0-9]*")):
+            top = d / "topology"
+            try:
+                core = (top / "core_id").read_text().strip()
+                pkg = (top / "physical_package_id").read_text().strip()
+            except OSError:
+                continue
+            sockets.add(pkg)
+            cores.add(pkg + "/" + core)
+        if not cores or not sockets:
+            return None
+        per_socket = len(cores) // len(sockets)
+        n = per_socket - 1
+        return n if n >= 2 else None
+    except Exception:  # noqa: BLE001 - no sysfs (Windows): stay with the engine's own count
+        return None
+
+
 def worker_candidates(default: int, extra=()) -> list[int]:
     """The engine's own count, and fewer: two thirds, a half and a quarter (at least 2), plus `extra` (the P-cores
     minus one on a hybrid CPU, one socket's cores minus one on a 2-socket PC), without repeats.  Bench #780 #815
@@ -128,6 +155,26 @@ def host_worker_extras() -> list[int]:
         return out
     except Exception:
         return []
+
+
+def code_prompt(tok):
+    """`make(i, n)`: the same as doc_prompt, over SOURCE files instead of the prose docs.
+
+    A setting can win on one text shape and lose on the other: --spec 4 and 6 measured 57.2 vs 58.1 tok/s on the docs
+    and 88.7 vs 93.3 on code.  The calibrator had one shape, so any such setting read as a tie."""
+    # A REAL file head, not a concatenation of whole files behind a header: the first version of this shape joined
+    # tools/*.py and asked to continue "this file", which is not the continuation traffic the box serves.  Measured
+    # against the paired gold standard on the serving prompt (10 of 10 pairs, +12.35% for spec_min_p 0.7) the joined
+    # shape reported -5.3% for the same value - a false negative that refused a real win.
+    text = (ROOT / "tools" / "calibrate.py").read_text(encoding="utf-8", errors="replace")[:400000]
+    body = tok.encode(text, parse_special=False) or [0]
+    tail = tok.encode("<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", parse_special=True)
+
+    def make(i: int, n: int) -> list[int]:
+        head = tok.encode(f"<|im_start|>user\n[calibration code read {i}] Continue this file:\n", parse_special=True)
+        return (head + (body * (n // len(body) + 1))[:n] + tail)[:n + len(head) + len(tail)]
+
+    return make
 
 
 def doc_prompt(tok):
@@ -216,9 +263,23 @@ class Session:
                 rates.append(n / (ms / 1000.0))
         return statistics.median(rates) if rates else 0.0
 
-    def warm_up(self, rounds: int = 2):
+    def warm_up(self, rounds: int = 6):
+        """Six rounds, not two: the rate after a start climbs in three plateaus - 83.5 tok/s on the first request,
+        93.1 on the second to fourth, 97.0 from the fifth (measured on this box, three restarts, settled level
+        repeating to 0.2%).  Two rounds stop ON the middle plateau, and a sweep that straddles the step reads the
+        candidate before it 4% slow - which is one way a phantom 5% win appears."""
         for _ in range(rounds):
             self.rate()
+
+
+VERIFY_WORKERS = False  # set by run() from the config: measure the CPU worker count instead of deriving it
+FINE = False            # FINE mode: the full confirmation and the tier's second pass, never skipped
+STOCK = False           # STOCK mode: no warm TUNE at all - a restart per candidate, as the tool worked before it
+CODE_IDS = None         # set by run(): the same prompts as SOURCE text, the second shape a change must also win
+CODE_SHAPE_TOKENS = 2400   # the length this box's continuation traffic actually has (measured on the live prompt)
+DEFER_SHAPE = True     # the second-shape guard runs LATER (tools/verify_shapes.py) unless --verify-now is given:
+                       # it costs ~60 s, and a first run must not spend that before the model has answered anything
+_CAL_T0 = time.monotonic()   # STRATA_CAL_TIMING=1 prints each step's elapsed seconds, measured from import
 
 
 def run(cfg: dict, say=print, start_engine=None, *, progress=None, cancel_event=None) -> dict:
@@ -231,6 +292,13 @@ def run(cfg: dict, say=print, start_engine=None, *, progress=None, cancel_event=
             e = child_env(cfg)
             e.update(env or {})
             return StrataEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=e)
+    global VERIFY_WORKERS, FINE
+    VERIFY_WORKERS = bool(cfg.get("verify_workers", False))
+    # FAST (default) skips a confirmation the sweep has already settled; FINE never does.  A live, idle box that is
+    # being tuned in the background can afford the extra rounds; a first install should not wait for them.
+    FINE = bool(cfg.get("calibrate_fine", False)) or os.environ.get("STRATA_CAL_FINE", "").strip() == "1"
+    global STOCK
+    STOCK = bool(cfg.get("calibrate_stock", False)) or os.environ.get("STRATA_CAL_STOCK", "").strip() == "1"
     import strata_tokenizer as ST
     tpath = Path(cfg["tokenizer"])
     vocab = json.loads((tpath / "vocab.json").read_text(encoding="utf-8"))
@@ -240,6 +308,12 @@ def run(cfg: dict, say=print, start_engine=None, *, progress=None, cancel_event=
     tok = ST.Tokenizer(toks, (tpath / "merges.txt").read_text(encoding="utf-8").split("\n"),
                        json.loads((tpath / "token_type.json").read_text()))
     ids_list = [chat_ids(tok, p) for p in PROMPTS]
+    _code = code_prompt(tok)
+    global CODE_IDS
+    # 1500 tokens, not 120: a short code fragment is a DIFFERENT workload from the multi-thousand-token file
+    # continuations this box serves, and the two disagree (measured: 120-token code favoured spec_min_p 0.5 by 5.5%,
+    # the real 2,500-token continuation favoured 0.7 by 4.6%).
+    CODE_IDS = [chat_ids(tok, _code(i, CODE_SHAPE_TOKENS)) for i in range(len(PROMPTS))] if _code else None
     if progress is None and cancel_event is None:
         return measure(engine_args(cfg), ids_list, start_engine, say, host_worker_extras(), doc_prompt(tok),
                        hip=cfg.get("backend") == "hip")
@@ -293,8 +367,24 @@ def sweep(s, values: list, base_tune: dict, key: str, label: str, say,
                 _progress(progress, stage, completed, len(values) * SWEEP_ROUNDS)
         say(f"    round {r + 1}/{SWEEP_ROUNDS} {label}: " +
             "  ".join(f"{v:g} {out[v][-1]:.1f}" for v in values))
+        # EARLY EXIT: after one round, if every value is inside 1% of the fastest, no later round can separate
+        # them -- MIN_GAIN is 3%, and the drift this rotation exists for is smaller than the effect being hunted.
+        # The caller then keeps its default instead of spending two more rounds on a phantom.  Measured on the build box
+        # (Arc Pro B70, 11,741 of 11,743 experts resident): the PCIe share spanned 56.4-56.5 across all eight values.
+        if r == 0 and len(values) > 2:
+            first = [out[v][-1] for v in values]
+            lo, hi = min(first), max(first)
+            if lo > 0 and (hi - lo) / lo < 0.01:
+                say(f"    {label}: all {len(values)} values within {100 * (hi - lo) / lo:.2f}% after one round - "
+                    "they cannot be told apart at the 3% it takes to beat the default, so the sweep stops here")
+                rounds_run = 1
+                if stage is not None:      # a progress bar must not stall at a third of the way when the sweep ends
+                    _progress(progress, stage, len(values) * SWEEP_ROUNDS, len(values) * SWEEP_ROUNDS)
+                break
+    else:
+        rounds_run = SWEEP_ROUNDS
     med = {v: statistics.median(out[v]) for v in values}
-    say(f"    {label}, median of {SWEEP_ROUNDS}: " +
+    say(f"    {label}, median of {rounds_run}: " +
         ", ".join(f"{v:g}: {med[v]:.1f} ({min(out[v]):.1f}-{max(out[v]):.1f})" for v in values) +
         f" -> best {max(med, key=lambda k: med[k]):g}")
     return out
@@ -330,17 +420,41 @@ def measure(base_args: list[str], ids_list, start_engine, say=print, extra_worke
         # 1. the PCIe share, at the default draft floor
         by_pcie = sweep(s, sorted(set(PCIE_FRACS) | {round(d_pcie, 2)}), {"spec_min_p": d_minp}, "pcie_frac",
                         "PCIe share", say, progress, "pcie_share")
-        best_pcie = max(by_pcie, key=lambda k: statistics.median(by_pcie[k]))
+        # "they cannot be told apart" means KEEP THE ENGINE'S OWN SHARE, not take the first value: after the early
+        # exit the medians are ties, and max() would hand back 0.0 (no experts over PCIe) as if it had won.
+        _v = [statistics.median(by_pcie[v]) for v in by_pcie]
+        if _v and max(_v) > 0 and (max(_v) - min(_v)) / max(_v) < 0.01:
+            say(f"  PCIe share: inside noise ({(max(_v) - min(_v)) / max(_v) * 100:.2f}%), keeping the engine's {round(d_pcie, 2)}")
+            best_pcie = round(d_pcie, 2)
+        else:
+            best_pcie = max(by_pcie, key=lambda k: statistics.median(by_pcie[k]))
         # 2. the draft floor, at that share
         by_minp = sweep(s, sorted(set(SPEC_MIN_PS) | {round(d_minp, 2)}), {"pcie_frac": best_pcie}, "spec_min_p",
                         "draft floor", say, progress, "draft_floor")
-        best_minp = max(by_minp, key=lambda k: statistics.median(by_minp[k]))
-        # 3. the winner against the default, interleaved, the same number of rounds
+        _v = [statistics.median(by_minp[v]) for v in by_minp]
+        if _v and max(_v) > 0 and (max(_v) - min(_v)) / max(_v) < 0.01:
+            best_minp = round(d_minp, 2)          # inside noise: keep the product default, do not crown a tie
+        else:
+            best_minp = max(by_minp, key=lambda k: statistics.median(by_minp[k]))
+        # 3. the winner against the default, interleaved, the same number of rounds -- UNLESS the sweep already
+        # said it in every round.  Measured on the build box: the draft floor put 0.7 ahead of 0.5 by 4.4-4.5% in all three
+        # rounds, the confirmation repeated it to the tenth, and it cost 48 s of the 394 s run.
         dflt, cand = (round(d_pcie, 2), round(d_minp, 2)), (best_pcie, best_minp)
         confirm = {dflt: [], cand: []}
         confirm_total = SWEEP_ROUNDS * 2 if cand != dflt else 1
         _progress(progress, "confirmation", 0, confirm_total)
-        if cand != dflt:
+        clear_lead = False
+        if not FINE and cand != dflt and by_minp.get(best_minp) and by_minp.get(round(d_minp, 2)):
+            mine, theirs = by_minp[best_minp], by_minp[round(d_minp, 2)]
+            if len(mine) == len(theirs) and len(mine) > 1:
+                clear_lead = all(a >= b * 1.03 for a, b in zip(mine, theirs))
+        if clear_lead:
+            say(f"  Confirmation: {cand} led {dflt} by 3% or more in every round of the sweep - accepted as measured")
+            confirm[cand].append(statistics.median(mine))
+            confirm[dflt].append(statistics.median(theirs))
+            chosen = cand
+            _progress(progress, "confirmation", confirm_total, confirm_total)
+        elif cand != dflt:
             for _ in range(SWEEP_ROUNDS):
                 for k in (dflt, cand):
                     confirm[k].append(s.rate({"pcie_frac": k[0], "spec_min_p": k[1]}))
@@ -348,12 +462,48 @@ def measure(base_args: list[str], ids_list, start_engine, say=print, extra_worke
         else:
             _progress(progress, "confirmation", 1, 1)
         chosen = pick(confirm, dflt) if cand != dflt else dflt
+        if chosen != dflt and CODE_IDS and DEFER_SHAPE:
+            # deferred: record what has to be checked once the box is up and quiet.  tools/verify_shapes.py reads
+            # this and either confirms the value or puts the default back - no user waits on it.
+            report["pending_shape"] = {"flag": "--spec-min-p", "chosen": chosen[1], "default": dflt[1],
+                                       "shape": "source code", "tokens": CODE_SHAPE_TOKENS,
+                                       "note": "run tools/verify_shapes.py when the server is idle"}
+            say(f"  Second shape DEFERRED: {chosen} is NOT applied yet - it is checked against the default on "
+                "source code later (tools/verify_shapes.py), and applied then if it holds")
+            chosen = dflt            # unverified: the default stays in the config until the check comes back
+        elif chosen != dflt and CODE_IDS:
+            # A second shape before the change: a value that wins on the docs and loses on source text is not a win,
+            # it is a setting tuned to one workload (measured: --spec 4 vs 6 tie on prose, +5.2% on code - and the
+            # reverse case is just as possible).  Two samples each side, only when a change is actually proposed.
+            s_code = Session(eng, CODE_IDS, cancel_event)
+            tune_a = {"pcie_frac": chosen[0], "spec_min_p": chosen[1]}
+            tune_b = {"pcie_frac": dflt[0], "spec_min_p": dflt[1]}
+            try:
+                # WARM both values first and discard those samples, then measure each twice interleaved.  One sample
+                # taken right after switching reads low - the same cold-answer bias the tier arms needed a warm-up
+                # for.  Measured: one sample each put spec_min_p 0.7 ~3% BEHIND the default on this shape, while ten
+                # interleaved pairs on the same prompt put it 12.35% ahead (10 of 10).
+                s_code.rate(tune_a)
+                s_code.rate(tune_b)
+                a = statistics.median([s_code.rate(tune_a), s_code.rate(tune_a)])
+                b = statistics.median([s_code.rate(tune_b), s_code.rate(tune_b)])
+            except Exception as e:  # noqa: BLE001 - a shape check that cannot run is not a failed calibration
+                say(f"    the second shape could not be measured ({first_line(e)}); the docs' answer stands")
+                a = b = 0.0
+            report["other_shape"] = {"winner": round(a, 2), "default": round(b, 2)}
+            if a and b and a < b * 0.97:
+                say(f"  Second shape disagreeing: {chosen} reads {a:.1f} against the default's {b:.1f} tok/s on source "
+                    "code - the change is NOT made (one shape's word is not a decision)")
+                chosen = dflt
+            elif a and b:
+                say(f"  Second shape agrees: {chosen} reads {a:.1f} against the default's {b:.1f} tok/s on source code")
         report.update(default={"pcie_frac": dflt[0], "spec_min_p": dflt[1], "pool_workers": d_workers},
                       pcie_sweep={str(k): v for k, v in by_pcie.items()},
                       min_p_sweep={str(k): v for k, v in by_minp.items()},
                       confirm={f"{k[0]}/{k[1]}": v for k, v in confirm.items()})
-    finally:
+    except BaseException:      # steps 0-3 raise: the engine goes; a completed run keeps it for the warm steps below
         close(eng)
+        raise
     settings = {}
     if pipe:
         settings["--prefill-pipe"] = str(int(pipe))
@@ -361,9 +511,20 @@ def measure(base_args: list[str], ids_list, start_engine, say=print, extra_worke
         settings["--pcie-frac"] = f"{chosen[0]:.2f}"
         settings["--spec-min-p"] = f"{chosen[1]:.2f}"
     base_rate = statistics.median(confirm[chosen]) if confirm.get(chosen) else None
-    # 4. fewer CPU workers (a restart each), with the chosen settings.  #1337's rule covers a death during a
-    # measurement too: an engine that exits mid-rate is that candidate losing; the measurements so far stay.
-    if d_workers and len(worker_candidates(d_workers, extra_workers)) > 1:
+    # 4. the CPU worker count -- DERIVED, not swept.  The engine already plans this number from the topology and
+    # starts with it, so the sweep only ever rediscovered the default, at the price of 3-5 engine restarts and one
+    # model load each.  --verify-workers runs the old sweep for anyone who wants it measured rather than derived.
+    # (#1337's rule still covers that path: a death during a measurement is that candidate losing, the rest stays.)
+    derived = derived_workers()
+    _progress(progress, "cpu_workers", 0, 1)      # the stage still reports, even when nothing is measured in it
+    if d_workers:
+        # the engine's own count is what it planned from this topology; the derivation is a cross-check, NOT a
+        # reason to write a value nobody measured (a config change on the strength of a rule is how a clock gets
+        # gained in theory and lost in practice).  Reported, and only acted on through VERIFY_WORKERS below.
+        agree = "" if derived in (None, d_workers) else f"; the topology rule alone would say {derived}"
+        say(f"  CPU workers: {d_workers} (the engine's own plan, not swept){agree}")
+        report["workers_derived"] = dict(engine=d_workers, rule=derived)
+    if VERIFY_WORKERS and d_workers and len(worker_candidates(d_workers, extra_workers)) > 1:
         tuned = with_arg(with_arg(base_args, "--pcie-frac", f"{chosen[0]:.2f}"), "--spec-min-p", f"{chosen[1]:.2f}")
         by_workers = {}
         workers = worker_candidates(d_workers, extra_workers)
@@ -383,22 +544,98 @@ def measure(base_args: list[str], ids_list, start_engine, say=print, extra_worke
             base_rate = statistics.median(by_workers[d_workers])
     else:
         _progress(progress, "cpu_workers", 1, 1)
-    # 5. the adaptive expert tier (a restart each), with everything chosen so far.  A candidate whose engine dies
-    # during its own measurement is dropped like a failed start (#1337); the other candidates and every earlier
-    # result survive.
+    # 5. the adaptive expert tier -- TUNED IN PLACE on the engine that is already loaded.  adapt_every, adapt_swaps
+    # and adapt_decay are read out of the engine's options where it swaps experts, so a TUNE line between requests
+    # changes them with no restart and no model reload (handle_tune in src/program/generate.cpp).  This step used to
+    # cost a load per candidate; it now costs none.  An engine without the TUNE command falls back to the restarts.
     tuned = apply(base_args, settings)
-    by_adapt = {}
+    by_adapt: dict = {}
+    warm = callable(getattr(eng, "tune", None)) and not VERIFY_WORKERS and not STOCK
+    d_adapt = {k: info.get(k) for k in ("adapt_every", "adapt_swaps", "adapt_decay")
+               if isinstance(info.get(k), (int, float))}
+    if not d_adapt:            # the engine reports none of them: the config's own flags, else the product defaults
+        d_adapt = {"adapt_every": 4, "adapt_swaps": 96, "adapt_decay": 0.7}
+        for flag, key in zip(ADAPT_FLAGS, ("adapt_every", "adapt_swaps", "adapt_decay")):
+            v = arg_value(base_args, flag)
+            if v not in (None, ""):
+                try:
+                    d_adapt[key] = float(v) if key == "adapt_decay" else int(v)
+                except ValueError:
+                    pass
+    if warm:                  # one thrown-away 512-token sample: the first long answer after the sweeps is always the
+        # slow one (measured on the build box: 46.9 then 57.8-58.1 for every later arm, with any tier setting), and it would
+        # otherwise land on whichever arm is measured first and invent a 10% win for the others.
+        try:
+            s_w = Session(eng, ids_list, cancel_event)
+            s_w.rate(max_new=TIER_MAX_NEW)
+        except Exception:     # noqa: BLE001 - a failed warm-up sample is not a result
+            pass
     _progress(progress, "expert_tier", 0, len(ADAPT_CANDIDATES))
     for index, cand in enumerate(ADAPT_CANDIDATES, 1):
         _check_cancel(cancel_event)
         key = "default" if cand is None else "/".join(cand)
-        args = tuned
-        for flag, v in zip(ADAPT_FLAGS, cand or (None,) * len(ADAPT_FLAGS)):
-            args = with_arg(args, flag, v)
-        say(f"  Measuring the expert tier {'(the engine default)' if cand is None else 'every ' + cand[0] + ', ' + cand[1] + ' swaps, decay ' + cand[2]} (restarts the engine) ...")
-        measure_candidate(start_engine, args, "the expert tier " + key, say, report, by_adapt, key, ids_list,
-                          TIER_MAX_NEW, cancel_event=cancel_event)
+        what = ("(the engine default)" if cand is None
+                else "every " + cand[0] + ", " + cand[1] + " swaps, decay " + cand[2])
+        if warm:
+            tune = (dict(d_adapt) if cand is None else
+                    dict(zip(("adapt_every", "adapt_swaps", "adapt_decay"),
+                             (int(cand[0]), int(cand[1]), float(cand[2])))))
+            say(f"  Measuring the expert tier {what} (TUNEd in place: no restart) ...")
+            try:
+                eng.tune(tune)
+            except Exception as e:  # noqa: BLE001 - a refused TUNE is this candidate losing, not a failed run
+                why = first_line(e)
+                say(f"    the engine refused the expert tier {key}: {why} - this candidate is dropped")
+                report.setdefault("failed_starts", {})["the expert tier " + key] = why
+                _progress(progress, "expert_tier", index, len(ADAPT_CANDIDATES))
+                continue
+            s_t = Session(eng, ids_list, cancel_event)
+            # the FIRST arm pays the tier's own warm-up (measured on the build box: 46.7 then 58.0 on the same arm, so a
+            # single warm-up sample was not enough and the default looked 10% slow); later arms inherit a warm tier
+            s_t.warm_up(3 if not by_adapt else 1)
+            by_adapt[key] = [s_t.rate(max_new=TIER_MAX_NEW)]
+        else:
+            args = tuned
+            for flag, v in zip(ADAPT_FLAGS, cand or (None,) * len(ADAPT_FLAGS)):
+                args = with_arg(args, flag, v)
+            say(f"  Measuring the expert tier {what} (restarts the engine) ...")
+            measure_candidate(start_engine, args, "the expert tier " + key, say, report, by_adapt, key, ids_list,
+                              TIER_MAX_NEW, cancel_event=cancel_event)
         _progress(progress, "expert_tier", index, len(ADAPT_CANDIDATES))
+    if warm:                  # a second pass in the OPPOSITE order: the tier's learned counts carry from one arm to
+        # the next, so whichever arm is measured first pays the warm-up.  One sample per pass, taken in both
+        # orders, charges every arm that cost once, and the caller takes the median of the two.
+        seen = [k for k in by_adapt if by_adapt[k]]
+        # ...unless the first pass already shows a tie: arms within 0.5% cannot be separated by a second sample, and
+        # the pass exists to cancel the carry-over bias, which shows up as a spread well above this.  Measured on
+        # the build box: 58.19 / 58.21 / 58.19 across the three arms, and the second pass cost 40 s to repeat it.
+        firsts = [by_adapt[k][0] for k in seen]
+        spread = (max(firsts) - min(firsts)) / max(firsts) if firsts and max(firsts) else 0.0
+        if not FINE and len(seen) > 1 and spread < 0.005:
+            say(f"  The expert tier: the arms are within {spread * 100:.2f}% of each other after one pass - a "
+                "second pass would re-measure a tie, so the engine's default stands")
+            pass   # keep every arm in the report: the caller's 3% rule will not switch on a tie
+        elif len(seen) > 1:
+            say("  The expert tier: a second pass in the opposite order (the tier carries over between arms) ...")
+            for cand in list(ADAPT_CANDIDATES)[::-1]:
+                _check_cancel(cancel_event)
+                key = "default" if cand is None else "/".join(cand)
+                if not by_adapt.get(key):
+                    continue
+                tune = (dict(d_adapt) if cand is None else
+                        dict(zip(("adapt_every", "adapt_swaps", "adapt_decay"),
+                                 (int(cand[0]), int(cand[1]), float(cand[2])))))
+                try:
+                    eng.tune(tune)
+                except Exception:   # noqa: BLE001 - already reported in the first pass
+                    continue
+                s_t = Session(eng, ids_list, cancel_event)
+                by_adapt[key].append(s_t.rate(max_new=TIER_MAX_NEW))
+    if warm and d_adapt:      # leave the tier as the engine started it, for step 6 and the caller
+        try:
+            eng.tune(d_adapt)
+        except Exception:     # noqa: BLE001
+            pass
     a_best = pick(by_adapt, "default") if by_adapt else "default"
     report["adapt"] = by_adapt
     if a_best != "default":
@@ -433,7 +670,9 @@ def measure(base_args: list[str], ids_list, start_engine, say=print, extra_worke
             base_rate = statistics.median(by_fork["0"])
     report["seconds"] = round(time.time() - t0)
     report["tok_s"] = round(base_rate, 1) if base_rate else None
+    report["engine_loads"] = 1
     _check_cancel(cancel_event)
+    close(eng)
     return {"settings": settings, "env": env, "report": report}
 
 
@@ -522,8 +761,44 @@ def apply_env(env: dict | None, calibrated: dict | None) -> dict:
     return out
 
 
+def exclusive(path) -> bool:
+    """Take an exclusive lock for this calibration; False when another one already holds it.
+
+    Two overlapping runs fight over the card and the tuning port, and the loser's engine is killed mid-load
+    (measured: SIGTERM during a load, reported as "the engine exited before it was ready").  A card holds one engine,
+    so a second calibration is a mistake, not a request to queue."""
+    import fcntl
+    try:
+        fh = open(path, "w")
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(str(os.getpid()))
+        fh.flush()
+        globals()["_LOCK_FH"] = fh          # held for the life of the process; the kernel drops it on exit
+        return True
+    except OSError:
+        return False
+
+
+def _timed_say(line: str) -> None:
+    """Progress with elapsed seconds: `STRATA_CAL_TIMING=1 tools/calibrate.py cfg.json` answers "where did the six
+    minutes go" - the sweeps or the load.  The stamp and the text go to the SAME stream on purpose: split across
+    stdout and stderr they interleaved into timestamps with no message under `tee`, which is how the first timed run
+    read."""
+    stamp = f"[{time.monotonic() - _CAL_T0:7.1f}s] " if os.environ.get("STRATA_CAL_TIMING") else ""
+    print(stamp + line, flush=True)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("usage: calibrate.py <strata-*.json>")
-    res = run(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8-sig")))
+    argv = [a for a in sys.argv[1:] if a != "--fine"]
+    if len(argv) != 1:
+        sys.exit("usage: calibrate.py <strata-*.json> [--fine]")
+    if "--fine" in sys.argv:
+        os.environ["STRATA_CAL_FINE"] = "1"      # the full confirmation + the tier's second pass
+    lock = Path(argv[0]).with_suffix(".calibrating")
+    if not exclusive(lock):
+        sys.exit(f"another calibration is running ({lock} is held) - wait for it, or remove a stale lock")
+    try:
+        res = run(json.loads(Path(argv[0]).read_text(encoding="utf-8-sig")), say=_timed_say)
+    finally:
+        lock.unlink(missing_ok=True)
     print(json.dumps(res, indent=1))
