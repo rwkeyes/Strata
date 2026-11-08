@@ -1,0 +1,5 @@
+strata-hip-rdna hip gfx1030 gfx1031 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx1200 gfx1201
+strata-cuda13 cuda13 sm_100 sm_120 sm_75 sm_80 sm_86 sm_89 sm_90
+strata-cuda12 cuda12 sm_60 sm_61 sm_70 sm_75
+strata-sycl-xe2 sycl-xe2 loads-and-links spir64 bmg-g31
+strata-sycl-dg2 sycl-dg2 loads-and-links spir64

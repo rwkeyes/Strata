@@ -1,0 +1,191 @@
+{
+ "_comment": "Engines baked from upstream Strata (github.com/Niko1221/Strata), built on vega; weights are NOT part of this payload. One binary per (backend, GPU family) because Strata has no dlopen backend system.",
+ "binaries": {
+  "strata-cuda12": {
+   "archs": [
+    "sm_60",
+    "sm_61",
+    "sm_70",
+    "sm_75"
+   ],
+   "backend": "cuda12",
+   "bytes": 444404304,
+   "isa_floor": "avx (STRATA_ISA_FLOOR=avx)",
+   "needed_extra": [
+    "libcublasLt.so.12",
+    "libcublas.so.12",
+    "libcudart.so.12",
+    "libdl.so.2",
+    "libpthread.so.0",
+    "librt.so.1",
+    "libstdc++.so.6"
+   ],
+   "sha256": "36bb63687dbc47587d2918c4521736b6bdfa0d5f397d6aa22645b00daaffa9fc",
+   "version": "0.1.57"
+  },
+  "strata-cuda13": {
+   "archs": [
+    "sm_100",
+    "sm_120",
+    "sm_75",
+    "sm_80",
+    "sm_86",
+    "sm_89",
+    "sm_90"
+   ],
+   "backend": "cuda13",
+   "bytes": 671437216,
+   "isa_floor": "avx (STRATA_ISA_FLOOR=avx)",
+   "needed_extra": [
+    "libcublasLt.so.13",
+    "libcublas.so.13",
+    "libcudart.so.13",
+    "libdl.so.2",
+    "libpthread.so.0",
+    "librt.so.1",
+    "libstdc++.so.6"
+   ],
+   "sha256": "7d0b513996ba9108629d7ce8a313724acf3054620765283207d90196aeb9b404",
+   "version": "0.1.57"
+  },
+  "strata-hip-rdna": {
+   "archs": [
+    "gfx1030",
+    "gfx1031",
+    "gfx1100",
+    "gfx1101",
+    "gfx1102",
+    "gfx1103",
+    "gfx1150",
+    "gfx1151",
+    "gfx1152",
+    "gfx1200",
+    "gfx1201"
+   ],
+   "backend": "hip",
+   "bytes": 505343272,
+   "isa_floor": "avx (STRATA_ISA_FLOOR=avx; starts on any Sandy Bridge or newer CPU)",
+   "needed_extra": [
+    "libamd_comgr.so.3",
+    "libamdhip64.so.7",
+    "libdrm_amdgpu.so.1",
+    "libdrm.so.2",
+    "libelf.so.1",
+    "libhipblaslt.so.1",
+    "libhipblas.so.3",
+    "libhsa-runtime64.so.1",
+    "libnuma.so.1",
+    "librocblas.so.5",
+    "librocprofiler-register.so.0",
+    "librocroller.so.1",
+    "librocsolver.so.0",
+    "libroctx64.so.4",
+    "libstdc++.so.6",
+    "libz.so.1",
+    "libzstd.so.1"
+   ],
+   "sha256": "c4b109def766b4c7bdd2684ffb7340883e993c0bbeb4f6e05650a4a96b049871",
+   "version": "0.1.57"
+  },
+  "strata-sycl-dg2": {
+   "archs": [
+    "loads-and-links",
+    "spir64"
+   ],
+   "backend": "sycl-dg2",
+   "bytes": 48608712,
+   "isa_floor": "none - the SYCL (Arc) project has no ISA-floor option, so its host code needs AVX2",
+   "needed_extra": [
+    "libdl.so.2",
+    "libmkl_core.so.3",
+    "libmkl_intel_lp64.so.3",
+    "libmkl_sequential.so.3",
+    "libmkl_sycl_blas.so.6",
+    "libpthread.so.0",
+    "libstdc++.so.6",
+    "libsycl.so.9",
+    "libze_loader.so.1"
+   ],
+   "sha256": "8002194f1d12aa96a0b8131b66f32a0a9a7ad720773cd7b3808f6dfcb5a980f9",
+   "version": "0.1.57"
+  },
+  "strata-sycl-xe2": {
+   "archs": [
+    "loads-and-links",
+    "spir64",
+    "bmg-g31"
+   ],
+   "backend": "sycl-xe2",
+   "bytes": 103752624,
+   "isa_floor": "none - the SYCL (Arc) project has no ISA-floor option, so its host code needs AVX2",
+   "needed_extra": [
+    "libdl.so.2",
+    "libmkl_core.so.3",
+    "libmkl_intel_lp64.so.3",
+    "libmkl_sequential.so.3",
+    "libmkl_sycl_blas.so.6",
+    "libpthread.so.0",
+    "libstdc++.so.6",
+    "libsycl.so.9",
+    "libze_loader.so.1"
+   ],
+   "sha256": "9f8496290319d3b61a4c48beab16d6ec404e5857eef4bde590910c85a021b3a3",
+   "version": "0.1.57"
+  }
+ },
+ "built": "2026-11-06",
+ "runtimes": {
+  "hip": {
+   "device_kernel_archs": {
+    "hipblaslt": [
+     "gfx1100",
+     "gfx1101",
+     "gfx1103",
+     "gfx1150",
+     "gfx1151",
+     "gfx1200",
+     "gfx1201"
+    ],
+    "rocblas": [
+     "gfx1030",
+     "gfx1100",
+     "gfx1101",
+     "gfx1102",
+     "gfx1150",
+     "gfx1151",
+     "gfx1200",
+     "gfx1201"
+    ]
+   },
+   "glibc_floor": "GLIBC_2.38 (loads on noble; z820b's Debian/Ubuntu 7.1.1 packages need 2.43 and were rejected)",
+   "path": "hip-runtime",
+   "proven": "runs with ROCM_PATH=/nonexistent and only this bundle on LD_LIBRARY_PATH; ldd -r clean; no library loaded from outside the bundle",
+   "raw_bytes": 1745542694,
+   "slim_alternative": "TheRock wheels (ROCm 7.10.0a, 600 MB, glibc 2.17-2.27) cover the gfx110X family only - kept on the build host, not shipped",
+   "source": "AMD ROCm 7.1.1 - the runtime the engine was compiled against (build host /opt/rocm-7.1.1)"
+  },
+  "oneapi": {
+   "not_included": "libsycl-jit.so and an AOT acm-* build: this IGC rejects the -ze-opt-greater-than-4GB-buffer-required option an A-series AOT build needs, so A-series uses the JIT engine",
+   "path": "oneapi-runtime",
+   "proven": "sycl-ls against this bundle alone lists [level_zero:gpu] Intel(R) Arc(TM) Pro B70 Graphics",
+   "raw_bytes": 243544370,
+   "source": "Intel oneAPI 2026.1.1 (/opt/intel/oneapi on the build host)"
+  }
+ },
+ "selftest": {
+  "exit_codes": {
+   "0": "at least one vendor path READY",
+   "1": "no supported card on this box",
+   "2": "a path is present but BROKEN - an image bug"
+  },
+  "installed_as": "/usr/local/bin/strata-selftest",
+  "needs_weights_for": "--pack DIR: tokens must be produced AND coherent; no flag-only invocation reaches a backend because arguments are parsed first",
+  "proves_without_weights": [
+   "binary loads and links against its own bundled runtime",
+   "the detected family's code object is inside the binary",
+   "the bundled rocBLAS/hipBLASLt kernels cover that family"
+  ],
+  "script": "strata-selftest.sh"
+ },
+ "version": "0.1.57"
+}
