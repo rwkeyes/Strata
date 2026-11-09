@@ -112,7 +112,7 @@ def test_adoption_needs_pairs_bar_and_gain(tmp_path):
         t._score(b)
         t._score(a)
     t.explore_pairs["spec_min_p"] = 12
-    t.seen = 20
+    t.seen_session = 20
     t._maybe_decide()
     assert "spec_min_p" in t.adopted and t.adopted["spec_min_p"]["gain"] > 3.0
 
@@ -126,7 +126,7 @@ def test_adoption_needs_pairs_bar_and_gain(tmp_path):
         t2._score(b)
         t2._score(a)
     t2.explore_pairs["spec_min_p"] = 12
-    t2.seen = 20
+    t2.seen_session = 20
     t2._maybe_decide()
     assert "spec_min_p" not in t2.adopted
 
@@ -134,7 +134,7 @@ def test_adoption_needs_pairs_bar_and_gain(tmp_path):
 def test_a_pinned_setting_is_never_explored(tmp_path):
     t, svc, eng = _tuner(tmp_path, pinned={"spec_min_p"})
     t.explore_pairs = {}
-    t.seen = 50
+    t.seen_session = 50
     t._explore()
     assert all("spec_min_p" not in c for c in eng.calls)
 
@@ -169,7 +169,7 @@ def test_adoption_is_declined_when_two_strata_disagree(tmp_path):
             t._score(b)
             t._score(a)
     t.explore_pairs["spec_min_p"] = 24
-    t.seen = 40
+    t.seen_session = 40
     t._maybe_decide()
     assert "spec_min_p" not in t.adopted
     assert any(d.get("action") == "declined" and d.get("why") == "strata disagree" for d in t.decisions)

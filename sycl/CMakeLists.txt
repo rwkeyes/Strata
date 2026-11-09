@@ -353,9 +353,10 @@ if(STRATA_SYCL_PARITY)
   else()
     message(STATUS "STRATA SYCL tests: no python3 with numpy found - iq_parity and its fixtures are not registered")
   endif()
-  # ple: real inputs (the Q2_0 shard-2 GGUF, the dense pack, the ggml capture); a missing one is a hard error INSIDE
-  # the test, as in the top-level build.  The working directory is the engine root, so the relative defaults resolve
-  # there.  Point it at your files with -DSTRATA_PLE_GGUF=<shard 2 .gguf> and -DSTRATA_PLE_FIXTURE_DIR=<dir>.
+  # ple: real inputs (the Q2_0 shard-2 GGUF, the dense pack, the ggml capture).  A fixture that is ABSENT is a
+  # SKIP (exit 77, SKIP_RETURN_CODE below); one that is present but wrong stays a hard error INSIDE the test, as in
+  # the top-level build.  The working directory is the engine root, so the relative defaults resolve there.  Point
+  # it at your files with -DSTRATA_PLE_GGUF=<shard 2 .gguf> and -DSTRATA_PLE_FIXTURE_DIR=<dir>.
   set(STRATA_PLE_GGUF "" CACHE FILEPATH "Q2_0 shard 2 GGUF that ple_parity reads (default: ../../Q2_0/... from the engine root)")
   set(STRATA_PLE_FIXTURE_DIR "${STRATA_ROOT}/bench/micro" CACHE PATH
       "Directory containing required ple_in.bin and ple_out.bin parity fixtures")
@@ -364,6 +365,7 @@ if(STRATA_SYCL_PARITY)
     list(APPEND _ple_args --gguf "${STRATA_PLE_GGUF}")
   endif()
   add_test(NAME ple_parity COMMAND ple_parity ${_ple_args} WORKING_DIRECTORY ${STRATA_ROOT})
+  set_tests_properties(ple_parity PROPERTIES SKIP_RETURN_CODE 77)
   # 0.1.31: the IQ kernels that decode a weight part once for every column/entry, bitwise vs the per-column ones
   # (no --selftest flag: it runs its checks by default), and the rewritten per-hit/grouped expert kernels vs the
   # previous ones, bitwise

@@ -324,6 +324,7 @@ class AutoTuner:
         self.thread: threading.Thread | None = None
         self.observations: list[Observation] = []
         self.seen = 0
+        self.seen_session = 0                        # requests served THIS session; reset to 0 on every start
         self.session = 0
         self.adopted: dict[str, dict] = {}          # setting -> {value, stratum, gain, pairs, session}
         self.arms: dict[str, list] = {}             # "stratum|setting|value" -> [metric, ...]
@@ -391,6 +392,7 @@ class AutoTuner:
 
     def _consume(self, block: list[str]) -> None:
         self.seen += 1
+        self.seen_session += 1
         # an arm tags the FIRST request served after it was applied (TUNE lands between requests, so that request
         # is the one that carried it); a block that was already streaming when the arm landed stays a baseline
         arm = None
@@ -463,7 +465,7 @@ class AutoTuner:
     def _maybe_decide(self) -> None:
         if self.mode == "off" or not self.observations:
             return
-        if self.seen < self.cold_requests:                  # a fresh engine's first requests are the slow ones
+        if self.seen_session < self.cold_requests:          # a fresh engine's first requests are the slow ones
             return
         for name, spec in SETTINGS.items():
             if spec["kind"] == "propose" or name in self.pinned:
@@ -511,7 +513,7 @@ class AutoTuner:
             return
         if sum(self.explore_pairs.values()) >= self.explore_cap:
             return
-        if self.seen < self.cold_requests:
+        if self.seen_session < self.cold_requests:
             return
         # the setting with the least evidence so far, among those still short of min_pairs
         pool_names = [n for n in SETTINGS
@@ -680,6 +682,9 @@ class AutoTuner:
 
     # --------------------------------------------------------------------------------------------- report
     def report(self) -> dict:
+        # /v1/tuning payload.  `seen` and `seen_session` count THIS session (reset on every start), while
+        # `seen_total` is the lifetime count carried in the state file; `requests_kept` is per-session too.
+        # `seen` is kept for readers that predate the split, now with the per-session value.
         with self.lock:
             strata: dict[str, dict] = {}
             for o in self.observations[-200:]:
@@ -715,7 +720,8 @@ class AutoTuner:
                                          pairs=best_pairs, min_pairs=spec["min_pairs"],
                                          enough_data=best_pairs >= spec["min_pairs"] and best_gain >= spec["gain_bar"])
             return dict(mode=self.mode, model=self.model, hardware=self.hw_key, session=self.session,
-                        seen=self.seen, requests_kept=len(self.observations),
+                        seen=self.seen_session, seen_session=self.seen_session, seen_total=self.seen,
+                        requests_kept=len(self.observations),
                         state_file=str(self.state_path), strata=strata, adopted=self.adopted,
                         arms=pending, proposals=self.proposals, decisions=self.decisions[-12:],
                         errors=self.errors[-5:],

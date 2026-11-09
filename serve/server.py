@@ -63,6 +63,7 @@ from serve.frontend import (THINK_END, ChatTemplate, Event, OutputParser, parser
                             forced_call, images_of, literal_tags, mark_think_literals, openai_to_messages, require_messages,
                             tool_choice_of, unmark_think_literals)
 from serve.mcp import McpCancelled, hub_from_config  # noqa: E402
+from serve import conv_router as conv_route_mod  # noqa: E402
 from serve import runconfig  # noqa: E402
 from serve.webfiles import subtree_file as web_subtree_file  # noqa: E402
 from strata_control import engine_component  # noqa: E402
@@ -287,6 +288,20 @@ def focused_recovery_prompt(tok, ids, generated):
 
 LOOPBACK_NAMES = ("localhost", "127.0.0.1", "::1")
 QUEUE_BEAT_S = 10.0         # a request waiting for the single turn sends a keep-alive this often (#1619)
+def _lever_say(stats: dict, what, line: str, tag: str) -> bool:
+    """Print `line` only when the decision CHANGED: a line per request would be as noisy as the engine's log.
+
+    Returns True when it printed.  Module level, not a method: the levers are also exercised on a stub service.
+    """
+    if what == stats.get("last"):
+        return False
+    stats["last"] = what
+    print(f"[strata] {tag}: {line}", flush=True)
+    return True
+
+
+LEVER_MODES = ("off", "shadow", "on")   # a per-request lever is a no-op, a labeller, or in force
+TUNE_PROMPT_TAIL = 8192                 # chars of the prompt a per-request retune classifies (the tail is the ask)
 KEEPALIVE_S = 10.0          # a held-back tool argument leaves the stream quiet: ping at least this often
 # Anthropic clients add /v1/messages to their base URL themselves. A base URL that already ends in /v1 (copied from an OpenAI-style
 # setup) makes them post /v1/v1/messages; these two paths mean the same as the real ones. Nothing else is aliased.
@@ -4860,6 +4875,17 @@ class Service:
         # Thinking budget by prompt: a request that asks for a short direct answer does not pay for a thinking
         # block (measured on this box: 313-405 reasoning characters before a one-line answer).  off | shadow | on.
         self.thinking_policy = "off"
+        self.conv_route = "off"            # off | shadow | on - see serve/conv_router.py
+        self.conv_router = None            # set by set_conv_route()
+        self.conv_route_stats = {"switches": 0, "refused": 0, "last": ""}
+        # Draft-window policy (0 = off, the engine's --spec applies to every request).  Measured on engine 0.1.58,
+        # 2026-11-07, two interleaved pairs with the release instruments: --spec 4 is +3.6..+7.5 % decode on the
+        # 4-9 k chat/code lanes, while a 7.8 k retrieval needle is 9.9 % FASTER at 6.  So the window is downshifted
+        # per request unless the prompt is retrieval-shaped (long prompt that asks a question), never below 2 and
+        # never above the start-up --spec.  A caller's own strata_tune spec always wins.
+        self.spec_window_down = 0
+        self.spec_window_needle_min = 6000
+        self.spec_window_stats = {"downshifted": 0, "kept": 0, "last": None}
         # Short-answer depth: when the ANSWER budget is short the draft chain does not need the full depth
         # (spec 4 vs 6 at max_tokens 8: +11.3 % decode, -1.9 % wall, 20 prompts x 2 rounds).  Keyed on
         # max_tokens, never on the prompt kind - at 128-token answers 6 is best.  0 = off.
@@ -5667,10 +5693,15 @@ class Service:
             idle = round(time.time() - self.last_request_at, 1) if self.last_request_at else None
             return {"served": self.totals.get("requests", 0), "busy": self.in_flight, "idle_s": idle}
 
+    @staticmethod
+    def _mode(mode: str) -> str:
+        """The three states a per-request lever can be in; anything else is off (a typo must not enable a lever)."""
+        return mode if mode in LEVER_MODES else "off"
+
     def set_code_tune(self, mode: str, profiles: dict | None = None) -> None:
         """Turn on the per-request retune.  `profiles` is {kind: {key: value}} with the engine's per-request keys
         (`spec_min_p`, `pcie_frac`); a kind with no profile is left alone."""
-        self.code_tune_mode = mode if mode in ("off", "shadow", "on") else "off"
+        self.code_tune_mode = self._mode(mode)
         self.code_tune_profiles = {k: {kk: float(vv) for kk, vv in (v or {}).items()
                                       if kk in ("spec_min_p", "pcie_frac", "spec", "lookup")}
                                   for k, v in (profiles or {}).items() if k in ("code", "prose")}
@@ -5683,11 +5714,7 @@ class Service:
                 **{k: v for k, v in self.code_tune_stats.items() if k != "last"}}
 
     def _code_tune_say(self, what: str) -> None:
-        """One line per CHANGE of decision: a per-request line would be as noisy as the engine's own log."""
-        if what == self.code_tune_stats.get("last"):
-            return
-        self.code_tune_stats["last"] = what
-        print(f"[strata] code-tune: {what}", flush=True)
+        _lever_say(self.code_tune_stats, what, what, "code-tune")
 
     def code_tune_sampling(self, ids, sampling: dict) -> dict:
         """Retune THIS request for the kind of answer its prompt asks for.
@@ -5699,7 +5726,7 @@ class Service:
         if self.code_tune_mode == "off" or not ids:
             return sampling
         try:
-            text = self.tok.decode(list(ids)[-8192:], errors="replace")
+            text = self.tok.decode(list(ids)[-TUNE_PROMPT_TAIL:], errors="replace")
             label = prompt_kind.classify(text)
         except Exception:                       # noqa: BLE001 - a decode or classify failure must not fail a request
             return sampling
@@ -5720,8 +5747,48 @@ class Service:
         self._code_tune_say(f"{label} -> {setting}")
         return {**sampling, "strata_tune": {**have, **want}}
 
+    def set_spec_window(self, down, needle_min: int = 6000) -> None:
+        """Downshift the draft window per request (0 = off).  The engine caps at its own --spec."""
+        try:
+            self.spec_window_down = max(0, min(8, int(down or 0)))
+            self.spec_window_needle_min = max(0, int(needle_min or 6000))
+        except (TypeError, ValueError):
+            self.spec_window_down = 0
+        if self.spec_window_down >= 2:
+            print(f"[strata] spec window: {self.spec_window_down} unless the prompt is retrieval-shaped "
+                  f"(>= {self.spec_window_needle_min} tokens and a question)", flush=True)
+
+    def spec_window_report(self) -> dict:
+        return {"down": self.spec_window_down, "needle_min": self.spec_window_needle_min,
+                "downshifted": self.spec_window_stats["downshifted"], "kept": self.spec_window_stats["kept"]}
+
+    def spec_window_sampling(self, ids, sampling: dict) -> dict:
+        """This request's draft window: the downshifted depth, or the start-up one for a retrieval prompt.
+
+        Measured (engine 0.1.58, B70, 2026-11-07): spec 4 against the deployed 6 is +5.0 % fresh 4.2 k, +3.6 %
+        fresh 8.8 k, +7.5 % follow-up 4.5 k decode, and -9.9 % on a 7.8 k retrieval needle.  The engine takes a
+        per-request spec=N (2..--spec, down only) and clamps it, so a value above --spec cannot slip through.
+        """
+        if self.spec_window_down < 2 or not ids or not isinstance(sampling, dict):
+            return sampling
+        raw = sampling.get("strata_tune")
+        have = dict(raw) if isinstance(raw, dict) else {}
+        if "spec" in have:
+            return sampling                     # the client's own value always wins
+        try:
+            tail = self.tok.decode(list(ids)[-TUNE_PROMPT_TAIL:], errors="replace")
+        except Exception:                        # noqa: BLE001 - a decode failure must not fail the request
+            return sampling
+        if len(list(ids)) >= self.spec_window_needle_min and "?" in tail:
+            self.spec_window_stats["kept"] += 1
+            self.spec_window_stats["last"] = "retrieval: start-up depth kept"
+            return sampling
+        self.spec_window_stats["downshifted"] += 1
+        self.spec_window_stats["last"] = f"spec={self.spec_window_down}"
+        return {**sampling, "strata_tune": {**have, "spec": self.spec_window_down}}
+
     def set_thinking_policy(self, mode: str) -> None:
-        self.thinking_policy = mode if mode in ("off", "shadow", "on") else "off"
+        self.thinking_policy = self._mode(mode)
         if self.thinking_policy != "off":
             print(f"[strata] thinking policy: {self.thinking_policy}", flush=True)
 
@@ -5771,16 +5838,64 @@ class Service:
             return
         if self.thinking_policy == "shadow":
             self.thinking_stats["shadowed"] += 1
-            if self.thinking_stats["last"] != str(verdict):
-                self.thinking_stats["last"] = str(verdict)
-                print(f"[strata] thinking policy: would turn thinking off ({verdict})", flush=True)
+            _lever_say(self.thinking_stats, str(verdict), f"would turn thinking off ({verdict})", "thinking policy")
             return
         self.thinking_stats["applied"] += 1
-        if self.thinking_stats["last"] != str(verdict):
-            self.thinking_stats["last"] = str(verdict)
-            print(f"[strata] thinking policy: thinking off ({verdict})", flush=True)
+        _lever_say(self.thinking_stats, str(verdict), f"thinking off ({verdict})", "thinking policy")
         kwargs.pop("reasoning_effort", None)
         kwargs["enable_thinking"] = False
+
+    def set_conv_route(self, mode: str, cache_on: int = 6, batch_after: int = 4) -> None:
+        """Per-request cache decision: `off` never touches the engine, `shadow` only logs, `on` retunes it.
+
+        The engine's prompt_cache is the switch: with it the conversation cache reuses a repeated context (5.3 s ->
+        0.29 s) but costs ~8 % of a 512-token prefill; without it the prefill is 33 % faster and nothing is reused.
+        """
+        self.conv_route = self._mode(mode)
+        self.conv_router = (conv_route_mod.Router(cache_on=max(1, int(cache_on)), batch_after=max(1, int(batch_after)))
+                            if self.conv_route != "off" else None)
+        if self.conv_router is not None:
+            print(f"[strata] conv route: {self.conv_route} (prompt_cache {self.conv_router.cache_on}, "
+                  f"batch after {self.conv_router.batch_after} single-shot requests)", flush=True)
+
+    def conv_route_report(self) -> dict:
+        if self.conv_router is None:
+            return {"mode": self.conv_route}
+        return {"mode": self.conv_route, **self.conv_router.report(), **self.conv_route_stats}
+
+    def conv_route_decide(self, req) -> None:
+        """Classify this request and, in `on` mode, retune the engine BEFORE it runs.
+
+        A switch is only applied when nothing else is in flight: `in_flight` counts this request already (the handler
+        increments it before dispatch), so "no others" is <= 1.
+        """
+        if self.conv_router is None or not isinstance(req, dict):
+            return
+        decision = self.conv_router.decide(req.get("messages"), req.get("tools"))
+        if decision.changed and self.conv_route == "shadow":
+            if self.conv_route_stats["last"] != str(decision):
+                self.conv_route_stats["last"] = str(decision)
+                print(f"[strata] conv route: would switch to {decision}", flush=True)
+            return
+        if not decision.changed or self.conv_route != "on":
+            return
+        if max(0, self.in_flight - 1) > 0:
+            self.conv_router.revert()          # someone else is mid-request; try again on the next one
+            self.conv_route_stats["refused"] += 1
+            return
+        try:
+            reply = self.engine.tune({"prompt_cache": decision.wanted_cache})
+        except Exception as e:                 # noqa: BLE001 - a refused retune must not fail the request
+            self.conv_router.revert()
+            self.conv_route_stats["refused"] += 1
+            print(f"[strata] conv route: retune refused ({type(e).__name__}: {e})", flush=True)
+            return
+        if "prompt_cache" in (reply.get("applied") or {}):
+            self.conv_route_stats["switches"] += 1
+            print(f"[strata] conv route: {decision}", flush=True)
+        else:
+            self.conv_router.revert()
+            self.conv_route_stats["refused"] += 1
 
     def set_short_spec(self, spec, max_tokens) -> None:
         self.short_spec = spec if isinstance(spec, int) and not isinstance(spec, bool) and 2 <= spec <= 32 else 0
@@ -5806,9 +5921,8 @@ class Service:
             return sampling
         tune["spec"] = self.short_spec
         self.short_spec_stats["applied"] += 1
-        if self.short_spec_stats["last"] != max_new:
-            self.short_spec_stats["last"] = max_new
-            print(f"[strata] short-answer depth: spec {self.short_spec} (max_tokens {max_new})", flush=True)
+        _lever_say(self.short_spec_stats, max_new,
+                  f"spec {self.short_spec} (max_tokens {max_new})", "short-answer depth")
         out = dict(sampling)
         out["strata_tune"] = tune
         return out
@@ -6390,6 +6504,7 @@ class Service:
             declared_only=False, deferred=False) -> Iterator[tuple[str, object]]:
         """The request's events (see _run); with "prevent_sleep" in the config, the PC stays awake while it runs or waits."""
         sampling = self.code_tune_sampling(ids, sampling or {})
+        sampling = self.spec_window_sampling(ids, sampling or {})
         ka = self.keep_awake
         if ka is not None:
             ka.acquire()
@@ -8381,7 +8496,9 @@ def make_handler(svc: Service):
                     # `seen` only counts what its sampling admitted, which is a weaker statement)
                     report["requests"] = svc.request_counts()
                     report["code_tune"] = svc.code_tune_report()
+                    report["spec_window"] = svc.spec_window_report()
                     report["thinking"] = svc.thinking_report()
+                    report["conv_route"] = svc.conv_route_report()
                     report["short_answer"] = svc.short_spec_report()
                     self._json(200, report)
                     return
@@ -8525,6 +8642,7 @@ def make_handler(svc: Service):
                         self._json(503, {"error": {"type": "server_error", "message": str(e)}})
                     return
                 if path in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
+                    svc.conv_route_decide(req)          # may retune prompt_cache for this traffic shape
                     self.record = svc.begin_request(path, req)
                 if path == "/v1/responses":
                     self._responses(req)
@@ -10198,6 +10316,19 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
     ap.add_argument("--auto-tune-budget", type=float, default=240.0,
                     help="with --auto-tune on: how many requests this session may carry an experimental value "
                          "(default 240; each arm request sits between two baseline requests)")
+    ap.add_argument("--spec-window", type=int, default=None,
+                    help="downshift the draft window to N for ordinary requests (0 = off; the engine's --spec "
+                         "stands). Measured on 0.1.58: spec 4 is +3.6..+7.5 %% decode on 4-9 k chat/code lanes "
+                         "and -9.9 %% on a 7.8 k retrieval needle, which keeps the start-up depth.")
+    ap.add_argument("--spec-window-needle-min", type=int, default=6000,
+                    help="a prompt at or above this many tokens that asks a question is treated as retrieval "
+                         "and keeps the start-up --spec (default 6000)")
+    ap.add_argument("--conv-route", choices=["off", "shadow", "on"], default=None,
+                    help="switch the engine's prompt/conversation cache per traffic shape: single-shot batches off "
+                         "(prefill +33 %%), chat/agent on (a repeated context reuses, 5.3 s -> 0.3 s). 'shadow' only "
+                         "logs what it would do (serve/conv_router.py)")
+    ap.add_argument("--conv-route-batch-after", type=int, default=4,
+                    help="consecutive single-shot requests before the cache is switched off (default 4)")
     ap.add_argument("--thinking-policy", choices=["off", "shadow", "on"], default=None,
                     help="do not pay for a thinking block on a request that asks for a short direct answer "
                          "(extraction, formatting, translation, a one-word reply; serve/prompt_kind.py "
@@ -10528,6 +10659,23 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
             print("[strata] short_answer in the config is malformed - ignored", flush=True)
     _tp = cfg.get("thinking_policy")
     svc.set_thinking_policy(a.thinking_policy or (_tp if isinstance(_tp, str) else "") or "off")
+    _sw = cfg.get("spec_window")
+    try:
+        svc.set_spec_window(a.spec_window if a.spec_window is not None else _sw,
+                            a.spec_window_needle_min or cfg.get("spec_window_needle_min") or 6000)
+    except (TypeError, ValueError):
+        print("[strata] spec_window in the config is malformed - ignored", flush=True)
+    # the cache the router switches is the one the engine was started with: read it back from the engine args
+    _args = (cfg.get("args") or [])
+    _pc = 6
+    if "--prompt-cache" in _args:
+        try:
+            _pc = int(_args[_args.index("--prompt-cache") + 1])
+        except (IndexError, ValueError):
+            _pc = 6
+    _cr = cfg.get("conv_route")
+    svc.set_conv_route(a.conv_route or (_cr if isinstance(_cr, str) else "") or "off",
+                       cache_on=_pc, batch_after=a.conv_route_batch_after)
     if (cfg.get("arch") or "") == "deepseek41" and vision is None and a.engine == "strata":
         # DeepSeek-V4.1 reads pictures with the engine's own tower (--vision on, the default): no separate reader process.
         # `--vision off` in the config's args, or a pack without a tower, leaves svc.vision None: pictures are refused with the 400 as before.

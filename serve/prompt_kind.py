@@ -73,7 +73,8 @@ def _lines(text: str) -> list[str]:
 
 def classify(text: str) -> Label:
     """Label one turn's text.  Never raises; an empty or unreadable prompt is prose (no change)."""
-    if not text or not text.strip():
+    text = text if isinstance(text, str) else ""
+    if not text.strip():
         return Label(PROSE, 0.0, {"empty": 0.0})
     reasons: dict = {}
     code = 0.0
@@ -85,8 +86,9 @@ def classify(text: str) -> Label:
         reasons["fenced blocks"] = 0.45 * fences
 
     lines = _lines(text)
+    is_code_line = [_CODE_LINE.search(ln) is not None for ln in lines]
     if lines:
-        hit = sum(1 for ln in lines if _CODE_LINE.search(ln))
+        hit = sum(is_code_line)
         ratio = hit / len(lines)
         if ratio:
             c = min(ratio * 1.2, 0.6)
@@ -126,7 +128,7 @@ def classify(text: str) -> Label:
     if _PROSE_VERB.search(text):
         prose += 0.30
         reasons["prose instruction"] = -0.30
-    if not fences and not instruction_code and not paths and not any(_CODE_LINE.search(ln) for ln in lines):
+    if not fences and not instruction_code and not paths and not any(is_code_line):
         prose += 0.20
         reasons["no code shape"] = -0.20
     words = max(len(text.split()), 1)
@@ -138,32 +140,31 @@ def classify(text: str) -> Label:
     return Label(CODE if score >= THRESHOLD else PROSE, score, reasons)
 
 
-def messages_text(messages, context_chars: int = 1200) -> str:
-    """The text a chat request is judged on: the LAST user turn, with the tail of the turn before it as context
-    ("explain what this does" is code when the thing before it was code)."""
-    turns = [m for m in (messages or []) if isinstance(m, dict)]
-    users = [m for m in turns if (m.get("role") or "").lower() == "user"]
-    if not users:
-        return ""
-    text = _content(users[-1])
-    if len(users) > 1:
-        text = _content(users[-2])[-context_chars:] + "\n" + text
-    return text
-
-
-def classify_messages(messages, context_chars: int = 1200) -> Label:
-    """Label a chat request: the LAST user turn decides, with the tail of the turn before it as context.
+def _last_user_text(messages, context_chars: int = 1200) -> str | None:
+    """The LAST user turn, with the tail of the turn before it as context; None when there is no user turn.
 
     "Explain what this does" is code when the thing before it was code, which a single-turn reading misses.
     """
     turns = [m for m in (messages or []) if isinstance(m, dict)]
     users = [m for m in turns if (m.get("role") or "").lower() == "user"]
     if not users:
-        return Label(PROSE, 0.0, {"no user turn": 0.0})
-    last = users[-1]
-    text = _content(last)
+        return None
+    text = _content(users[-1])
     if len(users) > 1:
         text = _content(users[-2])[-context_chars:] + "\n" + text
+    return text
+
+
+def messages_text(messages, context_chars: int = 1200) -> str:
+    """The text a chat request is judged on (see _last_user_text), or "" when there is no user turn."""
+    return _last_user_text(messages, context_chars) or ""
+
+
+def classify_messages(messages, context_chars: int = 1200) -> Label:
+    """Label a chat request by the text messages_text() returns."""
+    text = _last_user_text(messages, context_chars)
+    if text is None:
+        return Label(PROSE, 0.0, {"no user turn": 0.0})
     return classify(text)
 
 
@@ -229,7 +230,8 @@ def wants_direct_answer(text: str) -> Label:
     is positive only when the direct-reading evidence clearly outweighs the reasoning-reading evidence.  A code
     prompt is never direct: a bug or a design question needs its thinking.
     """
-    if not text or not text.strip():
+    text = text if isinstance(text, str) else ""
+    if not text.strip():
         return Label(PROSE, 0.0, {"empty": 0.0})
     reasons: dict = {}
     strong = len(_DIRECT_STRONG.findall(text))

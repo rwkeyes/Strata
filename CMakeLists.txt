@@ -394,6 +394,27 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
 # Only built when a GPU backend is on, so the Phase 1 targets keep working without a toolkit.
 strata_gpu_engine()
 
+# ---- Dirigo: the four dev probes the server and the payload use (0.2.12 carry) --------------
+# 0.2.13's refactor dropped these target definitions while keeping the sources.  The server's
+# automatic AMD device choice runs `strata-device --list-devices` next to the engine
+# (serve/server.py: hip_auto_devices), and the payload's smoke tests use load/overlap, so they
+# stay.  Same definitions as the 0.2.12 carry.
+if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+  add_executable(strata-device src/core/device_main.cpp)
+  target_link_libraries(strata-device PRIVATE strata_core)
+
+  add_executable(strata-load src/core/load_main.cpp)
+  target_link_libraries(strata-load PRIVATE strata_core strata_kernels)
+
+  add_executable(strata-concurrent src/core/concurrent_main.cpp)
+  target_include_directories(strata-concurrent PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(strata-concurrent PRIVATE strata_core strata_kernels ${_strata_gpu_runtime_target})
+
+  add_executable(strata-overlap src/core/overlap_main.cpp)
+  target_include_directories(strata-overlap PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(strata-overlap PRIVATE strata_core strata_kernels ${_strata_gpu_runtime_target})
+endif()
+
 strata_cpu_kernels()
 
 # ---- plan v0.3 P6: the i-quant models' CPU experts (IQ2_XS / IQ3_XXS files) ----

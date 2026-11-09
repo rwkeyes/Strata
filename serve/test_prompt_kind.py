@@ -132,3 +132,36 @@ class MeasuredFailures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_classify_does_not_raise_on_junk():
+    """The docstring promises it never raises; a caller passing None or a number must get prose, not a TypeError."""
+    for junk in (None, 123, b"bytes", [], {}):
+        got = PK.classify(junk)
+        assert got.kind == PK.PROSE, junk
+        assert got.score == 0.0, junk
+
+
+def test_classify_messages_agrees_with_classify_of_messages_text():
+    """The two public entry points share one reader; this is what proves it."""
+    cases = [
+        [{"role": "user", "content": "def f(x):\n    return x + 1\nWrite a unit test for this."}],
+        [{"role": "user", "content": "Explain what this does"}],
+        [{"role": "user", "content": "def parse(s):\n    return s.split(',')"},
+         {"role": "assistant", "content": "It splits a line."},
+         {"role": "user", "content": "Now make it handle quotes"}],
+        [{"role": "system", "content": "you are terse"}],
+        [],
+    ]
+    for messages in cases:
+        a = PK.classify_messages(messages)
+        b = PK.classify(PK.messages_text(messages))
+        assert a.kind == b.kind, messages
+        assert a.score == b.score, messages
+
+
+def test_messages_without_a_user_turn_say_why():
+    got = PK.classify_messages([{"role": "system", "content": "hi"}])
+    assert got.kind == PK.PROSE
+    assert "no user turn" in got.reasons
+    assert PK.messages_text([{"role": "system", "content": "hi"}]) == ""
