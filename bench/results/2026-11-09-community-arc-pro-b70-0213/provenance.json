@@ -1,0 +1,54 @@
+{
+ "report": "dirigo 0.2.13 port vs stock 0.2.13, same battery",
+ "date": "2026-11-09",
+ "operator": "rwkeyes (Dirigo Agents LLC)",
+ "hardware": {
+  "gpu": "Intel Arc Pro B70 32 GB (Battlemage G31, PCI 8086:e223), AOT target bmg-g31",
+  "display_gpu": "AMD Raphael iGPU (1002:164e) drives the desktop; the Arc is compute-only",
+  "cpu": "AMD Ryzen 7 7700X (8 cores)",
+  "kernel": "7.0.0-42-generic",
+  "toolkit": "Intel oneAPI compiler 2026.2",
+  "model": "qwen3.8-flash-next-coder-iq1_m (Qwen3.8 coder, IQ1_M + mine expert pack)"
+ },
+ "releases": {
+  "tag": "v0.2.13",
+  "tag_commit": "fb57f7472c2a",
+  "engine_version": "0.1.59",
+  "ggml_pin": "3cf0325",
+  "dirigo_tree": {
+   "branch": "release/0.2.13",
+   "head": "3512b4cce511",
+   "commits_over_tag": 2,
+   "diff_vs_tag": "38 files, +5062/-264",
+   "engine_bytes": 99889376,
+   "engine_sha256_16": "a44a41938f2aeda0"
+  },
+  "stock_tree": {
+   "branch": "stock/0.2.13",
+   "head": "v0.2.13 as tagged",
+   "engine_bytes": 99897992,
+   "engine_sha256_16": "7b5439980466a569"
+  }
+ },
+ "what_was_measured": {
+  "unit_suites": "python -m unittest discover -s serve -p 'test_*.py' in each tree",
+  "behaviour_probes": "minefield (5 traps), 24-token short-answer extraction, needle at 7,855 tokens, 165,779-token over-window request, lever endpoints",
+  "battery": "bench_prefill (fresh 4.2k/8.8k + follow-ups, warmup) and longprobe (code, 30k prompt, 7.9k needle, over-window), two interleaved passes each, order dirigo stock stock dirigo",
+  "guidellm": "GuideLLM 0.8.1, synthetic_text 512 in / 128 out, concurrent profile streams 1,2,4,8, 45 s per point, one load round trip: dirigo then stock in the same session",
+  "determinism": "same greedy prompt repeated 10x (3 prompts) plus a 4.2k prompt 6x, both engines, counting distinct answers"
+ },
+ "fairness_notes": [
+  "Both trees built with the same script, same flags, same pinned ggml, same AOT target; the two engine binaries differ by 8,616 bytes.",
+  "Both trees ran the same server config file contents; the stock server ignores the fork's lever keys (conv_route, thinking_policy, spec_window, code_tune) and 404s /v1/tuning and /v1/tune.",
+  "Each engine had the card to itself (the production service on :8095 was stopped for the duration and restored afterwards); every window verified 12,288 of 12,288 slots pre-filled with 0 experts over PCIe.",
+  "GuideLLM arms ran back to back in one session; position drift measured in the companion 0.2.12-vs-0.2.13 run is 2-4%, smaller than the differences reported here.",
+  "Speed numbers are one card, one model, one workload shape (512/128 concurrent and a 4-leg prefill/decode battery); they are not a claim about other hardware."
+ ],
+ "artifacts": {
+  "suites/": "full unittest logs, both trees",
+  "battery/": "8 probe JSONs, 4 windows x (bench_prefill + longprobe)",
+  "guidellm/": "raw GuideLLM result JSONs and summary.json",
+  "determinism/": "distinct-answer counts per prompt, both engines",
+  "scripts/": "the harnesses that produced all of the above"
+ }
+}
