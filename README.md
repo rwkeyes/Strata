@@ -1,60 +1,195 @@
-# Strata_Dirigo — release 0.2.11
+# Strata — Dirigo Agents' verified build
 
-Dirigo Agents' fork of [Strata](https://github.com/Niko1221/Strata) (MIT), based on upstream tag **`v0.2.11`**
-(engine **0.1.57**). Source only — no engine binaries, no model weights. Upstream's own README (build, hardware,
-setup) is preserved at [`docs/UPSTREAM-README.md`](docs/UPSTREAM-README.md).
+**Strata is a local AI engine.** It runs a very large language model on one ordinary PC by sharing the work
+between the graphics card, the CPU, the RAM and the SSD — no account, no cloud. It speaks the OpenAI and
+Anthropic APIs on `localhost`, so the coding tools you already use can talk to it.
 
-## How it differs from stock v0.2.11
+This repository is **Dirigo Agents' fork** of [Niko1221/Strata](https://github.com/Niko1221/Strata) (MIT).
+It is **source only**: no installers, no engine binaries, no model files. Upstream's own README is preserved at
+[`docs/UPSTREAM-README.md`](docs/UPSTREAM-README.md).
 
-The engine, kernels and model format are upstream's. The fork adds server-level behaviour and one opt-in engine
-knob; with none of them enabled, the server behaves as stock.
+<p align="center">
+  <img src="docs/media/app-chat.png" width="820" alt="The Strata desktop app: a chat, the files it is editing, and a live preview in one window">
+  <br><sub>Strata running a 24,576-expert model locally, on one graphics card.</sub>
+</p>
 
-| difference | what it does | control |
+The default branch, `dirigo/0.2.12-verified`, is one snapshot: upstream tag **v0.2.12** (commit `146df3c4`,
+engine **0.1.58**) plus this fork's changes, in the state that served a live machine on 2026-11-08 — with the
+measurements behind it kept in [`dirigo-results/`](dirigo-results/). What was verified, and how:
+[`DIRIGO.md`](DIRIGO.md).
+
+> **Never used Strata before?** Start with [Getting started](docs/GETTING-STARTED.md) — it walks from "what is
+> this" to your first answer, and explains every word Strata uses in [plain language](docs/GLOSSARY.md).
+>
+> **Just want to run Strata, not build it?** Use the stock release instead — one line in the terminal and no compiler:
+> [Download the release](https://github.com/Niko1221/Strata/releases/latest) · [install guide](docs/INSTALL.md).
+
+## Start here
+
+| I want to… | Go to | Time |
 | --- | --- | --- |
-| conversation cache routed by traffic shape | a run of single-shot prompts switches the cache **off** (faster prefill); a conversation switches it back **on** (prefix reuse) | `serve/conv_router.py`, `--conv-route off\|shadow\|on` (default `shadow` = classify and log only) |
-| thinking policy | suppresses the scratchpad for short/factual asks, keeps it for anything that computes or orders | `serve/prompt_kind.py` + the compute/ordering guard |
-| retune between requests | change engine settings on a live server — no restart, no reload | `POST /v1/tune`, `GET /v1/tuning`, `--auto-tune off\|shadow\|on` |
-| single-load calibration | one engine load instead of six for FAST / FINE / STOCK | `tools/calibrate.py` |
-| per-request draft depth | a client can set its own speculation depth for one request | `spec=N`, inert unless sent |
-| build fixes carried | HIP `alignas` fix (upstream #778); oneMKL link narrowed to the BLAS domain | in the tree |
+| Run Strata on my own PC | [Install (stock release)](docs/INSTALL.md) — installer, or one line in the terminal | 10 min + model download |
+| Reproduce the build this fork verified | [Quick start](#quick-start-build-this-snapshot) below · [evidence](DIRIGO.md) | 30–60 min of compiling |
+| Connect Claude Code, Codex, OpenCode, Hermes… | `strata connect`, or [tool connections](docs/TERMINAL_LAUNCH.md#connect-your-apps-strata-connect) | 5 min |
+| Check my hardware before downloading anything | [What you need](#what-you-need) · [which model fits](docs/MODELS.md#pick-by-memory) | 5 min |
+| Understand the engine | [How it works](docs/HOW_IT_WORKS.md) · [technical reference](docs/DETAILS.md) | — |
+| Read the evidence for the numbers | [`DIRIGO.md`](DIRIGO.md) · [`dirigo-results/`](dirigo-results/) | — |
+| All guides, page by page | [Documentation index](docs/README.md) | — |
 
-## GuideLLM — each test, both arms
+## What you need
 
-Same engine version built from the same tag in both arms. **GuideLLM 0.8.1**, Intel Arc Pro B70 32 GB, model
-`qwen3.8-flash-next-coder-iq1_m`, synthetic 512-in / 128-out chat requests, streaming (TTFT measured, not
-inferred), `temperature 0`, 45 s per concurrency level, both arms in one session on the same card. Both arms
-fully resident — 12,288 expert slots, **0 experts over PCIe**. **0 errors** at every level in both arms.
+Strata is not a small-model tool. The smallest recommended Qwen3.8-Flash-Next pack needs about **37.6 GB of
+memory (RAM plus VRAM)**; the coding-only pack runs in about 32 GB. Unified memory (Apple Silicon, Strix Halo)
+counts once. Check [which model fits](docs/MODELS.md#pick-by-memory) before you download tens of gigabytes.
 
-| concurrency | TTFT median | ITL median | requests/s | output tok/s |
-| --- | --- | --- | --- | --- |
-| 1 — stock | 827 ms | 10.4 ms | 0.4 | 56.6 |
-| 1 — this fork | **729 ms** (−11.8 %) | **8.9 ms** | **0.5** | **62.6** (+11 %) |
-| 2 — stock | 2,831 ms | 9.4 ms | 0.4 | 56.0 |
-| 2 — this fork | **2,570 ms** (−9.2 %) | **9.2 ms** | **0.5** | **65.4** (+17 %) |
-| 4 — stock | 7,279 ms | 10.5 ms | 0.4 | 54.0 |
-| 4 — this fork | **6,044 ms** (−17.0 %) | **8.8 ms** | **0.5** | **65.6** (+21 %) |
-| 8 — stock | 9,872 ms | 9.9 ms | 0.4 | 54.4 |
-| 8 — this fork | **8,932 ms** (−9.5 %) | 10.8 ms | **0.5** | **59.7** (+10 %) |
+| | Requirement |
+| --- | --- |
+| Graphics card | NVIDIA RTX 20/30/40/50 · AMD Radeon RX 7000/9000 and AI PRO R9700 (RX 6000 experimental) · Intel Arc on Linux · Apple Silicon |
+| Memory | ~32–55 GB for Qwen3.8-Flash-Next; 46–64 GB RAM plus a 12 GB card for DeepSeek V4.1-Flash |
+| Disk | SSD with room for the model — roughly 40 GB for Qwen3.8-Flash-Next, 239–274 GB for DeepSeek V4.1-Flash |
+| To build from source | Python 3, CMake 3.24+, Ninja, a C++20 compiler, and your GPU's toolkit (CUDA, ROCm, oneAPI or Xcode) |
 
-GuideLLM's workload is all unique prompts, so the router settles into cache-off for it. The fork wins every column
-except ITL at c=8. Neither arm scales with concurrency — the engine serves one request at a time by design, so c=8
-queues. The pp512 figure behind the c=1 gain is 880.9 vs stock 710.9 tok/s **settled**; measured cold, the first
-four requests of a burst read 463.8 while the cache is still on.
+The card-specific details are in [NVIDIA](docs/INSTALL.md#what-you-need), [AMD](docs/AMD_HIP.md),
+[Intel Arc](docs/INTEL_ARC.md), [Mac](docs/MAC.md), [multiple GPUs](docs/MULTI_GPU.md).
 
-### What GuideLLM cannot show
+## Quick start: build this snapshot
 
-Its workload never repeats a context, so the reuse the router buys is invisible to it. Measured separately, same
-card, own harness:
+This is the build the branch was verified with: Intel Arc, SYCL AOT `bmg-g31`, Intel oneAPI 2026.2. AMD and
+NVIDIA build from the same sources with their own guides below.
 
-| chat-shaped traffic | stock | this fork |
-| --- | --- | --- |
-| second request on the same context | 5.29 s | **0.29 s** (17×) |
-| first request on a context | 827 ms | 943 ms (+117 ms) |
-| 12 short extractions, 8-token budget | 0/12 correct | **9/12 correct** |
-| 26-prompt accuracy battery | 88.5 % | **92.3 %** |
+```sh
+# 1. source (the default branch is the verified snapshot)
+git clone --branch dirigo/0.2.12-verified https://github.com/rwkeyes/Strata.git
+cd Strata
 
-The 117 ms is paid once per fresh context and returned on the first repeat.
+# 2. Python side
+python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+
+# 3. build — needs oneAPI's icpx and oneMKL on PATH: source /opt/intel/oneapi/setvars.sh
+cmake -S sycl -B build-sycl-aot -DSTRATA_SYCL_AOT=bmg-g31
+cmake --build build-sycl-aot --target strata -j"$(nproc)"
+
+# 4. prove what you built before going further
+./build-sycl-aot/strata --version          # must print: strata 0.1.58
+```
+
+The engine reads a **pack** (a prepared model folder) plus the model's GGUF shards. Build the pack from the
+GGUF files you downloaded, once per model:
+
+```sh
+python tools/iq_pack.py \
+  --gguf /path/to/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf \
+  --out packs/iq3xxs
+```
+
+Then serve. These are the settings the measured service ran with — replace the paths, and keep
+`data/expert-profile*.bin` where the binary can find it:
+
+```sh
+./build-sycl-aot/strata --serve \
+  --pack packs/iq3xxs --native <shard-1.gguf> --ple-gguf <shard-2.gguf> \
+  --expert-profile data/expert-profile.bin --expert-cache auto --stream-experts --prefill auto \
+  --prompt-cache 6 --prompt-cache-every 4096 --batch 0 --spec 6 --spec-min-p 0.5 \
+  --mtp <draft> --mtp-draft-vocab data/draft_vocab_en.bin --mtp-window 8192 \
+  --max-context 131072 --kv int8 --kv-resident 32768 --vram-reserve-mib 700
+```
+
+`--serve` is the engine's own token protocol. For a browser or an OpenAI-compatible API, run the bundled
+server with those arguments in its config (`args`), and check it answers:
+
+```sh
+.venv/bin/python -m serve.server --engine strata --config strata.json --port 8080
+curl -s http://127.0.0.1:8080/v1/models
+```
+
+Other builds: [AMD / HIP](docs/AMD_HIP.md#build) · [NVIDIA / CUDA](docs/SOURCE_INSTALL.md#build-from-git-on-linux-to-try-a-pull-request-or-change-the-code) ·
+[Mac / Metal](docs/MAC.md) · [the guided `./setup.sh` route](docs/SOURCE_INSTALL.md).
+
+## Quick start: stock release
+
+If you want Strata running rather than built, the released app and terminal do the engine choice, download
+and model preparation for you:
+
+```sh
+# Linux / Mac
+curl -fsSL https://github.com/Niko1221/Strata/releases/latest/download/install.sh -o install.sh && sh install.sh
+strata launch
+```
+
+```powershell
+# Windows PowerShell, then open a new terminal
+irm https://github.com/Niko1221/Strata/releases/latest/download/install.ps1 | iex
+```
+
+`strata launch --plan` prints what would be downloaded and how much memory it needs, and changes nothing.
+[Full install guide](docs/INSTALL.md) · [Terminal launch](docs/TERMINAL_LAUNCH.md).
+
+## Words you will meet
+
+| Word | Plain meaning |
+| --- | --- |
+| pack | a prepared model folder the engine reads |
+| shard | one part of a model file split across several downloads |
+| quantization (Q2_0, IQ3_XXS, IQ1_M) | how much the model was compressed — smaller is faster and lighter, larger is better |
+| expert | one small specialist network inside the model; only a few are needed per word |
+| PLE table | the big lookup table Strata reads from your SSD instead of holding in memory |
+| KV cache | what the model remembers about the conversation; costs memory per token of context |
+| slot | one conversation being served at a time (the engine serves one at a time by design) |
+| prefill / decode | reading your prompt / writing the answer |
+| TTFT | time to first token — how long before the answer starts |
+| spec / MTP | the helper that guesses the next words so the big model can check several at once |
+| TUNE | the fork's channel for changing engine settings between requests, without a restart |
+
+Full list, including the fork-specific terms: [Glossary](docs/GLOSSARY.md).
+
+## If your first run fails
+
+| Symptom | What to do |
+| --- | --- |
+| `strata` is not found | Open a new terminal; on Linux/Mac add `~/.local/bin` to `PATH` |
+| "Couldn't find an engine for this computer" | `strata update`, then `strata doctor --live` ([Troubleshooting](docs/TROUBLESHOOTING.md)) |
+| Build stops at `icpx: not found` | `source /opt/intel/oneapi/setvars.sh` before `cmake` |
+| Engine exits before it is ready, after a source build | The expert profile is missing — `data/expert-profile.bin` must be beside the binary's working directory |
+| It used the wrong graphics card | `strata-device --list-devices`; pick one with `--device` or `ROCR_VISIBLE_DEVICES` / `CUDA_VISIBLE_DEVICES` |
+| Loads, then runs out of memory | Smaller pack, lower `--max-context`, or lower `--kv-resident` |
+| Very slow first answer | First start warms the file cache; measure the second request |
+
+More: [Troubleshooting](docs/TROUBLESHOOTING.md) · [engine errors](docs/DETAILS.md#troubleshooting).
+
+## What this fork changes
+
+The engine, kernels and model format are upstream's. This fork adds server-level behaviour and one engine
+change; with none of them enabled the server behaves as stock.
+
+| Change | What it does |
+| --- | --- |
+| conversation-cache routing | turns the prompt cache off for runs of single-shot prompts, back on for a conversation |
+| thinking policy | skips the scratchpad for short, factual asks; keeps it when the answer needs work |
+| retune between requests | change engine settings on a live server — no restart, no reload |
+| per-request draft depth | a client can set its own speculation depth for one request |
+
+Measured effect, limits and the full list: [`DIRIGO.md`](DIRIGO.md). The parts that belong upstream are open
+as separate branches listed there.
+
+## Repository map
+
+| Path | What lives there |
+| --- | --- |
+| `sycl/` | the Intel Arc build of the engine |
+| `src/`, `include/` | the engine core (CUDA, and the shared C++ sources) |
+| `metal/` | the Apple Silicon backend |
+| `serve/` | the OpenAI / Anthropic compatible server, model preparation, monitoring |
+| `strata_cli/`, `strata_control/` | the `strata` terminal command |
+| `apps/` | the desktop app |
+| `tools/` | pack building, calibration and measurement tools |
+| `bench/` | benchmark protocol and community results |
+| `docs/` | all guides — [index](docs/README.md) |
+| `dirigo-results/` | this fork's measurements, benchmark results and the carry patch |
 
 ## Licence
 
-MIT — upstream Strata plus the Dirigo changes; see [`LICENSE`](LICENSE).
+MIT — upstream Strata plus the Dirigo changes; see [`LICENSE`](LICENSE). Model files are not part of this
+repository and carry their own licences.
+
+The translated READMEs (`README.de.md`, `README.es.md`, `README.fr.md`, `README.ja.md`, `README.pl.md`,
+`README.pt-BR.md`, `README.zh-CN.md`) are upstream's and describe **stock** Strata, not this fork.

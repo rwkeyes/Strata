@@ -1,11 +1,19 @@
 # Dirigo Strata 0.2.12 — the verified tree, and what was measured
 
-This branch is the **one place** for the Strata tree Dirigo Agents runs and the evidence behind it. It is a single
-snapshot commit: upstream Strata **v0.2.12** (`146df3c46`, engine **0.1.58**) plus this fork's carry, in the state that
-served `:8095` on vega on 2026-11-08, with every measurement kept under [`dirigo-results/`](#what-is-in-dirigo-results).
+This branch is the **one place** for the Strata tree Dirigo Agents runs and the evidence behind it. It is one
+snapshot commit — upstream Strata **v0.2.12** (`146df3c46`, engine **0.1.58**) plus this fork's carry, in the state
+that served `:8095` on vega on 2026-11-08 — with every measurement kept under
+[`dirigo-results/`](#what-is-in-dirigo-results).
+
+The snapshot is `9fd4e15d` (5,837 tracked files); the tree hash below belongs to it. Commits after it on this branch
+change documentation only and leave `src/`, `include/`, `sycl/`, `metal/`, `serve/`, `setup.py` and `CMakeLists.txt`
+byte-identical, so a re-clone of the tag plus the carry still reproduces the deployed tree.
 
 Nothing here is aspirational: each number below was produced on 2026-11-07/08 on one Intel Arc Pro B70 (32 GB), with the
 model and configuration named in the same document that carries the result.
+
+> **New to Strata?** This page is the evidence, not the tour. Read [README.md](README.md) for what this fork is and
+> [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) to get running; come back here when you want the numbers.
 
 ## Provenance — what this tree is
 
@@ -29,7 +37,7 @@ the measurement tooling, and a test fix that makes `test_hip_ordinal` independen
 | --- | --- | --- |
 | Clean-room reproduction | fresh `git clone --branch v0.2.12` + carry = deployed tree, **same tree hash** `b5335e96a518a5c90e87aaaf92f52bfdf0f6ef04` (5,837 tracked files both) | `dirigo-results/notes/deployment-and-audit-2026-11-08.md` |
 | Build from scratch | 0 errors, engine **112,593,920 bytes** (same size as deployed), `--version` → `strata 0.1.58`, AOT `bmg-g31` | same |
-| Unit / integration suite | **1,535 tests, 611 s, 17 skipped, 0 failures** | [`dirigo-results/unit-tests/suite-0.2.12-deployed-tree.log`](dirigo-results/unit-tests/suite-0.2.12-deployed-tree.log) |
+| Unit / integration suite | **1,535 tests, 611 s, 17 skipped, 0 failures** | [deployment record](dirigo-results/notes/deployment-and-audit-2026-11-08.md) — the raw log is not kept in this repository |
 | Card gate (live service) | minefield **5/5**, one-token 200, extraction at a 24-token budget answered in 0.42 s with **0 reasoning chars**, live `POST /v1/tune` applied | deployment record |
 | Standard benchmark protocol (`strata-qwen38-thinking-v1-draft.1`) | **status complete, 21/21 requests, 0 failed, 12/12 sanity**; prompt 1,404 tok/s at 4K, 1,773 at 16K; decode 80.8/68.1 tok/s; TTFT 2.94/9.27 s | [`dirigo-results/standard-benchmark/`](dirigo-results/standard-benchmark/) |
 | Community-format comparison (0.2.11 / 0.2.12 / stock 0.2.12, interleaved) | 0.2.12 decode +0.4…+1.2 % over 0.2.11, within ±0.3 % of stock; needle 6/6 | [`dirigo-results/community-report/`](dirigo-results/community-report/) |
@@ -92,7 +100,7 @@ Full write-up: [`dirigo-results/notes/improvements-2026-11-08.md`](dirigo-result
 | `notes/deployment-and-audit-2026-11-08.md` | the 0.2.11 → 0.2.12 promotion: what changed, the evidence it took, the rollback command, the lever audit, the clean-room reproduction |
 | `notes/improvements-2026-11-08.md` | every experiment of 2026-11-08 with its numbers, including the ones that failed |
 | `notes/carry-0212.patch` | the complete delta against tag v0.2.12 — 35 files, +5,024/−264 |
-| `unit-tests/` | full suite logs: the deployed tree (1,535, OK) and the clean-room tree before the topology fix |
+| `unit-tests/` | not shipped in this repository: the suite result (1,535 tests, OK) is recorded in `notes/deployment-and-audit-2026-11-08.md` |
 | `standard-benchmark/` | the standard-protocol result folder: `README.md`, `results.json`, `outputs.jsonl`, `config.json`, template and corpus provenance, plus the operator's hardware correction |
 | `community-report/` | the three-build comparison (0.2.11 / 0.2.12 / stock 0.2.12): README, per-request JSON, the two probe scripts |
 | `guidellm/` | GuideLLM 0.8.1 results: 0.2.11, 0.2.12, 0.2.12-with-shadow, and the summaries |

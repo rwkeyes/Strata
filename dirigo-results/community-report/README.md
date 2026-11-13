@@ -4,7 +4,7 @@ Measured on 2026-11-07 by [@rwkeyes](https://github.com/rwkeyes). One Intel Arc 
 configuration, three builds, run in six interleaved engine windows so machine drift lands on all three arms
 instead of one.
 
-This is a **community report in the format of [docs/COMMUNITY_BENCHMARKS.md](../../../docs/COMMUNITY_BENCHMARKS.md)**,
+This is a **community report in the format of [docs/COMMUNITY_BENCHMARKS.md](../../docs/COMMUNITY_BENCHMARKS.md)**,
 not a standard-protocol run: it carries no protocol ID, the sampling is greedy (`temperature 0`) rather than the
 model card's, and there is no twelve-case sanity suite. The main limitation is at the bottom, together with the
 two tuning observations that come with controls of their own.
