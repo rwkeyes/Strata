@@ -18,6 +18,41 @@ engine **0.1.58**) plus this fork's changes, in the state that served a live mac
 measurements behind it kept in [`dirigo-results/`](dirigo-results/). What was verified, and how:
 [`DIRIGO.md`](DIRIGO.md).
 
+## Why it is fast
+
+The speed is **upstream Strata's** — Niko1221's engine. This fork adds server behaviour on top of it; the
+engine's performance is not ours. It comes from four decisions:
+
+- **Only the experts a word needs are computed.** Qwen3.8-Flash-Next is 24,576 small specialists and a word
+  needs about ten. The busiest live on the card (each free GB holds roughly 700 more), every expert stays in RAM, and the
+  CPU computes the ones the card does not hold *at the same time* as the card works — neither waits.
+- **Long prompts are read in big pieces** (up to 8,192 tokens), which is why a long document is read at over
+  1,000 tokens a second, and a follow-up reuses the context already read instead of starting over.
+- **A 28.8 GB lookup table lives on the SSD** and is read a few rows per token, so it costs disk bandwidth
+  instead of memory.
+- **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
+  of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
+
+What upstream's releases actually changed, each measured against the release before it:
+
+| Release | Hardware | Effect |
+| --- | --- | --- |
+| 0.1.13 | RTX 5070 12 GB | 8,192-token prompt chunks + quantised kernels: prompt **572 → 1,290 tok/s** (Q2_0), 383 → 1,208 (IQ3_S) |
+| 0.2.0 | RTX PRO 5000 emulating a 12 GB card, 32 GB RAM | zero-copy and I/O prefetch: decode **1.7 / 2.6 / 2.9×** (story / code / 8K document), prompts 1.5× and 1.9× |
+| 0.2.4 | RTX 5070 + Ryzen 5 7600 | exact CPU rows for the experts the card does not hold: decode **4.08 → 5.11 tok/s** (+25%), prompts +26% |
+| 0.2.7 | RTX 3060 12 GB | router prefers experts already on the card: story **+15%**, code **+37%** |
+| 0.2.7 | Radeon AI PRO R9700 | 8K prompt **+22%**, 32K decode **+31%**, 8K decode +14% |
+| 0.2.7 | 2 × RTX A4000 | layer-major prefill on a layer split: first word after a 32K prompt **141.8 s → 27.7 s** |
+
+> **Measured on:** exactly what each row names, in paired or interleaved runs against the previous release,
+> taken from the release notes and the [engine history table](docs/DETAILS.md). One machine, one model and one
+> workload per row; none of them is a promise for another card.
+
+End to end on the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M): **1,404 tok/s**
+prompt at 4K and 1,773 at 16K, **80.8 and 68.1 tok/s** decode, first token after 2.94 s and 9.27 s —
+[the measurements](DIRIGO.md#speed-against-stock-measured-with-guidellm-the-standard-tool). The fork's own
+changes are much smaller and server-side; they are in [What this fork changes](#what-this-fork-changes).
+
 > **Never used Strata before?** Start with [Getting started](docs/GETTING-STARTED.md) — it walks from "what is
 > this" to your first answer, and explains every word Strata uses in [plain language](docs/GLOSSARY.md).
 >
