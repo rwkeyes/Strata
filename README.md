@@ -20,8 +20,8 @@ measurements behind it kept in [`dirigo-results/`](dirigo-results/). What was ve
 
 ## Why it is fast
 
-The speed is **upstream Strata's** — Niko1221's engine. This fork adds server behaviour on top of it; the
-engine's own performance is not ours. It comes from four decisions:
+Stock Strata v0.2.13 and this fork run the **same engine version (0.1.59)**, so the engine's speed is upstream's —
+Niko1221's — and identical on both sides. Four decisions make that engine fast:
 
 - **Only the experts a word needs are computed.** Qwen3.8-Flash-Next is 24,576 small specialists and a word
   needs about ten. The busiest live on the card (each free GB holds roughly 700 more), every expert stays in RAM, and the
@@ -29,10 +29,19 @@ engine's own performance is not ours. It comes from four decisions:
 - **Long prompts are read in big pieces** (up to 8,192 tokens), which is why a long document is read at over
   1,000 tokens a second, and a follow-up reuses the context already read instead of starting over.
 - **A 28.8 GB lookup table lives on the SSD** and is read a few rows per token, so it costs disk bandwidth
-  instead of memory. It is the model's second file: one `per_layer_token_embd.weight` tensor of 160 × 320,001,536
-  values at 4 bits — 28,800,138,240 bytes, decimal GB, 26.8 GiB.
+  instead of memory. It belongs to the **model**, not to either engine: the publisher's second file, one
+  `per_layer_token_embd.weight` tensor of 160 × 320,001,536 values at 4 bits — 28,800,138,240 bytes, decimal GB,
+  26.8 GiB. Stock and this fork read the same file.
 - **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
   of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
+
+**Both versions do all four.** The expert split, the 28.8 GB table and guess-then-check — the MTP draft layer — are
+stock behaviour, not fork features, and the carry does not change how any of them runs; that is why the comparison
+below builds the same engine version on both sides. (The one PLE file the carry touches is `ple_parity`, that table's
+self-test, which now skips instead of failing when the model file is not on the box.) What the fork adds around drafting is two settings a client or a
+config can send — a per-request depth (`spec=N`) and a draft window (`spec_window`) — and neither is used by the
+measurement: `spec_window` was 0, and GuideLLM never sends `spec`. The fork's measured difference is on the
+**server** side, which is the next section.
 
 On the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M) that comes out at **1,404 tok/s**
 reading a 4K prompt and 1,773 at 16K, **80.8 and 68.1 tok/s** writing, first token after 2.94 s and 9.27 s —
