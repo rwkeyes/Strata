@@ -1,6 +1,23 @@
 # Strata guides
 
-**New here? Start with [Install Strata](INSTALL.md).** Download the one installer for your system (Windows, Linux or Mac), or install the Terminal with one line. Both use released engine packages. This documentation is for version 0.2.5.
+**New here? Read [Getting started](GETTING-STARTED.md) first.** It takes you from "what is this" to a first
+answer, on either the released install or this repository's source snapshot. Every word Strata uses is in the
+[glossary](GLOSSARY.md).
+
+These guides describe the tree in this repository: upstream Strata **v0.2.12** (engine **0.1.58**) plus this
+fork's changes. For the fork's verified build, what was measured, and the evidence, read
+[DIRIGO.md](../DIRIGO.md).
+
+## Start here
+
+| You are… | Start with |
+| --- | --- |
+| Completely new to Strata | [Getting started](GETTING-STARTED.md) |
+| Installing, updating, or wondering where files went | [Install](INSTALL.md) |
+| Building from a source checkout | [Source install](SOURCE_INSTALL.md) |
+| Wondering whether your PC can run it | [Which model fits](MODELS.md#pick-by-memory) |
+| Stuck on an error | [Troubleshooting](TROUBLESHOOTING.md) |
+| Reading this fork's numbers | [DIRIGO.md](../DIRIGO.md) · [`dirigo-results/`](../dirigo-results/) |
 
 ## Use Strata
 
@@ -9,6 +26,7 @@
 | Install or update | [Desktop app and Terminal](INSTALL.md) |
 | Choose a model and check memory | [Models and quantizations](MODELS.md) |
 | Run DeepSeek V4.1-Flash (app and Terminal) | [DeepSeek V4.1-Flash](MODELS.md#deepseek-v41-flash) |
+| Run Qwen3.6-35B-A3B | [Qwen3.6-35B-A3B](QWEN36.md) |
 | Start from the command line | [Terminal launch](TERMINAL_LAUNCH.md) |
 | Connect a coding tool | [Tool connections](TERMINAL_LAUNCH.md#connect-your-apps-strata-connect) |
 | Fix an install or startup problem | [Troubleshooting](TROUBLESHOOTING.md) |
@@ -39,6 +57,13 @@ Use the guide for your GPU and operating system. Model and feature support can d
 - [KVA: approximate prompt processing for the late layers (experimental, opt-in)](KVA.md)
 - [App development](../apps/host/README.md) and [packaging](../packaging/README.md)
 
+## This fork
+
+- [Verified build, measurements and evidence](../DIRIGO.md)
+- [Measurements, suite logs and the carry patch](../dirigo-results/)
+- [Glossary of every term](GLOSSARY.md)
+- The parts that belong upstream are open as separate branches, listed in [DIRIGO.md](../DIRIGO.md#upstream)
+
 ## AI tools and media
 
 - [Install for a user](AI_SETUP.md)
@@ -59,7 +84,9 @@ does not establish support or speed on every GPU.
 ## Writing a guide page
 
 - Installation steps live in [INSTALL.md](INSTALL.md), source steps in [SOURCE_INSTALL.md](SOURCE_INSTALL.md). The public READMEs stay short.
-- Check command examples against the parser and filenames against the release assets.
+- Check command examples against the parser and filenames against the release assets. Do not hard-code a version
+  number in an instruction: the release page names the file, and this repository is a snapshot that will age.
+- Write for a reader who has never seen the term before; link the [glossary](GLOSSARY.md) instead of re-explaining.
 - A guide describes the current release. Version history, fixed bugs and superseded settings go in a closing
   **History / older measurements** section, in `bench/results`, or in the release notes. Do not mix them into instructions.
 
