@@ -31,12 +31,21 @@ Niko1221's — and identical on both sides. Three decisions make that engine fas
 - **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
   of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
 
-**All three are stock behaviour.** The expert split, the prompt-chunk reads and guess-then-check (the MTP draft layer)
-work the same on both sides — the carry changes nothing in how they run, which is why the comparison below builds the
-same engine version for both arms. What the fork adds around drafting is two settings a client or a config can send —
-a per-request depth (`spec=N`) and a draft window (`spec_window`) — and neither is used by the measurement:
-`spec_window` was 0, and GuideLLM never sends `spec`. The fork's measured difference is on the **server** side,
-which is the next section.
+**All three are stock behaviour.** The expert split, the prompt-chunk reads and guess-then-check (the MTP draft
+layer) run the same on both sides. The comparison below starts both arms with `--spec 6 --spec-min-p 0.5` and neither
+sends a per-request override, so drafting is not part of the gain.
+
+What the fork adds is **control over the drafter, not a different drafter**:
+
+| setting | stock v0.2.13 | this fork |
+| --- | --- | --- |
+| draft depth | `--spec` at startup, for every request | also `spec=N` per request, clamped by the engine to 2…the startup value |
+| prompt lookup | `--suffix-draft` at startup | also `lookup=0\|1` per request |
+| draft confidence | `spec_min_p` per request via `strata_tune` | the same, and changeable globally on a live server |
+| window policy | — | `spec_window`: serve some traffic at a lower depth (0 in the measurement) |
+
+None of it was switched on for the numbers below: `spec_window` was 0, and GuideLLM sends no `strata_tune`. The
+fork's measured difference is on the **server** side, which is the next section.
 
 On the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M) that comes out at **1,404 tok/s**
 reading a 4K prompt and 1,773 at 16K, **80.8 and 68.1 tok/s** writing, first token after 2.94 s and 9.27 s —
