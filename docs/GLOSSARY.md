@@ -53,11 +53,15 @@ An expert used for every token, so it always lives on the card.
 A small built-in model that guesses the next few words so the big model can check several at once. It only
 guesses; the big model still decides every word, so answers do not change. See also **spec**.
 
+Every build of Strata has it — stock and this fork run the same draft layer, so it is not a difference between them.
+What this fork adds is only the ability to set its depth per request (`spec=N`) and a draft window (`spec_window`).
+
 **PLE table**
 The large lookup table (28.8 GB for Qwen3.8-Flash-Next) that Strata reads a few rows of per token from the SSD
 instead of holding in memory. `--ple-gguf` points at it; `--ple-io` chooses how it is read.
 
-The size is not a round number chosen by a doc: it is the model's **second file**, one tensor
+It ships **with the model**, not with Strata, and neither the stock engine nor this fork creates, modifies or
+re-encodes it. The size is not a round number chosen by a doc: it is the publisher's second GGUF file, one tensor
 `per_layer_token_embd.weight` of 160 × 320,001,536 values stored as IQ4_NL (18 bytes per 32 values), which is
 160 × 320,001,536 × 18/32 = **28,800,138,240 bytes**. "28.8 GB" throughout these guides is decimal GB — the same
 file reads 26.8 GiB in `df`. A pack that stores the table in another type is bigger: Unsloth's UD-Q6_K_XL keeps it
