@@ -46,6 +46,17 @@ The last two columns are one measurement read two ways: 739 ms is 22.1 % below 9
 739 ms. "Arrives sooner" is the column to quote. In the same 45-second window the fork finishes 22 / 22 / 22 / 23
 requests against 21 / 20 / 19 / 21 — 62.6 / 62.6 / 62.6 / 65.4 output tokens a second against 59.7 / 56.9 / 54.0 / 59.7.
 
+**Which of those rows are you?** GuideLLM's "streams" are concurrent clients against one server.
+
+- **One stream** is the ordinary case: one person at one keyboard, or one agent loop — ask, read the answer, ask again.
+  That is where the 22 % applies, and it is most desktop use.
+- **Two to four** is a few agents or tools sharing the box: an editor's assistant beside a terminal agent, or two
+  people on one machine. 17 % and 11 % still apply.
+- **Eight** is a queue: a batch job, an evaluation harness, a team. Both servers ran these tests at `--batch 0` — one
+  request at a time — so eight clients mostly wait for their turn, and the two lines meet. If you need several
+  requests actually in flight, the engine takes `--batch`/`--slots` (2–8 in the usual case; `--parallel` in the
+  Terminal) and the numbers would be a different experiment — [batching](docs/BATCHING.md) covers that configuration.
+
 **Where the difference comes from.** A fresh prompt is the one case the two servers handle differently. Stock opens
 the prompt cache and pays the pool work before it can emit a token. The fork's router recognises a run of unique
 prompts as one-shot traffic and serves it with the cache **off** — no pool work between the request and the first
@@ -63,8 +74,9 @@ from paths, and the same model file for the 28.8 GB lookup table.
 recomputes every figure on this page from those files. Both arms: 0 errored requests.
 
 **What it does not show.** A faster engine — parity, measured above. A win on conversations, where the cache comes
-back on and the two converge. Anything at eight streams, where both are queue-bound. A throughput win at one stream:
-one extra request in a 45-second window is the measurement's own granularity (4.8 %), reported rather than claimed.
+back on and the two converge. Anything about multi-slot serving: the tests ran `--batch 0`, one request at a time. A
+throughput win at one stream: one extra request in a 45-second window is the measurement's own granularity (4.8 %),
+reported rather than claimed.
 
 **What the engine both of us run is doing.** Underneath the server, the speed is stock's: only the experts a word
 needs are computed (the card and the CPU working at the same time), prompts are read in 8,192-token pieces and reused
