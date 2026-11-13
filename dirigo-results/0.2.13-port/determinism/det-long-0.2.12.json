@@ -1,0 +1,54 @@
+{
+ "label": "0.2.12",
+ "runs": 6,
+ "prompts": {
+  "long": {
+   "distinct": 1,
+   "shas": {
+    "ec8249494b15": 6
+   },
+   "chars": [
+    5,
+    5,
+    5,
+    5,
+    5,
+    5
+   ],
+   "walls": [
+    3.22,
+    0.32,
+    0.32,
+    0.31,
+    0.32,
+    0.31
+   ],
+   "answers": [
+    {
+     "text": "155 0",
+     "sha": "ec8249494b15",
+     "chars": 5,
+     "wall": 3.22,
+     "finish": "stop",
+     "tokens": 6
+    },
+    {
+     "text": "155 0",
+     "sha": "ec8249494b15",
+     "chars": 5,
+     "wall": 0.32,
+     "finish": "stop",
+     "tokens": 6
+    },
+    {
+     "text": "155 0",
+     "sha": "ec8249494b15",
+     "chars": 5,
+     "wall": 0.32,
+     "finish": "stop",
+     "tokens": 6
+    }
+   ]
+  }
+ }
+}

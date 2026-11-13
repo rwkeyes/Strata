@@ -1,0 +1,263 @@
+[
+  {
+    "label": "s0213-p2",
+    "kind": "warmup",
+    "trial": 0,
+    "wall_s": 0.282862235999346,
+    "metrics": {
+      "prompt_tokens": 15.0,
+      "reused": 0.0,
+      "fresh": 15.0,
+      "prefill_ms": 190.0,
+      "prefill_tps": 78.8,
+      "generated": 2.0,
+      "decode_ms": 79.0,
+      "decode_tps": 25.3
+    },
+    "usage": {
+      "prompt_tokens": 15,
+      "completion_tokens": 2,
+      "total_tokens": 17,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop",
+    "message": {
+      "role": "assistant",
+      "content": "READY"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "fresh",
+    "trial": 1,
+    "wall_s": 4.792847354001424,
+    "metrics": {
+      "prompt_tokens": 4210.0,
+      "reused": 0.0,
+      "fresh": 4210.0,
+      "prefill_ms": 3138.0,
+      "prefill_tps": 1341.4,
+      "generated": 128.0,
+      "decode_ms": 1650.0,
+      "decode_tps": 77.6
+    },
+    "usage": {
+      "prompt_tokens": 4210,
+      "completion_tokens": 128,
+      "total_tokens": 4338,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The source code defines a series of 140 exported functions, named `rule0` through `rule139`, each accepting a single numeric argument `x`. Every function follows an identical logical pattern: it checks if the input `x` is strictly equal to the integer value embedded in its name (denoted as $n$); if this condition is true, the function returns $x + n + 1$, and if false, it returns $x - n$. Consequently, each specific rule acts as a conditional modifier that either increments the input by one more than its index or decrements it by its index, depending"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "followup",
+    "trial": 1,
+    "wall_s": 2.117771012002777,
+    "metrics": {
+      "prompt_tokens": 4451.0,
+      "reused": 4337.0,
+      "fresh": 114.0,
+      "prefill_ms": 422.0,
+      "prefill_tps": 270.2,
+      "generated": 128.0,
+      "decode_ms": 1692.0,
+      "decode_tps": 75.7
+    },
+    "usage": {
+      "prompt_tokens": 4451,
+      "completion_tokens": 128,
+      "total_tokens": 4579,
+      "prompt_tokens_details": {
+        "cached_tokens": 4337
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The most relevant boundary case is the **exact integer equality check** (`x === n`), which acts as a strict gatekeeper for the \"increment\" branch. For any function `ruleN`, if the input `x` is exactly equal to `N`, the function returns `N + 1` (a positive offset); otherwise, it returns `x - N`. This creates a discontinuity in behavior: inputs just below or above `N` result in subtraction, while `N` itself results in addition.\n\nThe **smallest useful regression test** targets this specific equality condition because it is the only case where the output"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "fresh",
+    "trial": 2,
+    "wall_s": 7.764538708001055,
+    "metrics": {
+      "prompt_tokens": 8830.0,
+      "reused": 0.0,
+      "fresh": 8830.0,
+      "prefill_ms": 6265.0,
+      "prefill_tps": 1409.5,
+      "generated": 128.0,
+      "decode_ms": 1494.0,
+      "decode_tps": 85.7
+    },
+    "usage": {
+      "prompt_tokens": 8830,
+      "completion_tokens": 128,
+      "total_tokens": 8958,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The source code defines a series of exported functions named `rule0` through `rule279`, each accepting a single numeric argument `x`. Every function follows an identical logical structure: it checks if the input `x` is strictly equal to the integer value embedded in its name (e.g., `rule5` checks for `5`). If this condition is true, the function returns `x + 1`; otherwise, it returns `x - 1`. Consequently, each specific rule acts as a conditional modifier that increments the input by one only when the input matches the rule's index, and decrements the input by one"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "followup",
+    "trial": 2,
+    "wall_s": 1.92023629400137,
+    "metrics": {
+      "prompt_tokens": 9071.0,
+      "reused": 8958.0,
+      "fresh": 113.0,
+      "prefill_ms": 410.0,
+      "prefill_tps": 275.6,
+      "generated": 128.0,
+      "decode_ms": 1506.0,
+      "decode_tps": 85.0
+    },
+    "usage": {
+      "prompt_tokens": 9071,
+      "completion_tokens": 128,
+      "total_tokens": 9199,
+      "prompt_tokens_details": {
+        "cached_tokens": 8958
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The most relevant boundary case is the **exact match condition** where `x` equals the rule's index (e.g., calling `rule5(5)`), which triggers the increment branch (`x + 1`) rather than the decrement branch (`x - 1`). This distinguishes the function from a simple arithmetic operation and validates the core logic.\n\nThe **smallest useful regression test** is:\n```javascript\nassert(rule0(0) === 1); // Boundary: x=0 matches rule index, returns 0+1=1\nassert(rule0(-1) === -2); // Negative input:"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "fresh",
+    "trial": 3,
+    "wall_s": 4.720648042999528,
+    "metrics": {
+      "prompt_tokens": 4210.0,
+      "reused": 0.0,
+      "fresh": 4210.0,
+      "prefill_ms": 3183.0,
+      "prefill_tps": 1322.5,
+      "generated": 128.0,
+      "decode_ms": 1533.0,
+      "decode_tps": 83.5
+    },
+    "usage": {
+      "prompt_tokens": 4210,
+      "completion_tokens": 128,
+      "total_tokens": 4338,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The source code defines a series of 140 exported functions, named `rule0` through `rule139`, each accepting a single numeric argument `x`. Every function follows an identical logical structure: it checks if the input `x` is strictly equal to the integer value embedded in its name (denoted as $n$). If this condition is true, the function returns $x + n + 1$; otherwise, it returns $x - n$. Consequently, for any given function `ruleN`, the output is $2N + 1$ when the input matches $N$, and $x -"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "followup",
+    "trial": 3,
+    "wall_s": 2.341802208000445,
+    "metrics": {
+      "prompt_tokens": 4451.0,
+      "reused": 4203.0,
+      "fresh": 248.0,
+      "prefill_ms": 645.0,
+      "prefill_tps": 384.3,
+      "generated": 128.0,
+      "decode_ms": 1693.0,
+      "decode_tps": 75.6
+    },
+    "usage": {
+      "prompt_tokens": 4451,
+      "completion_tokens": 128,
+      "total_tokens": 4579,
+      "prompt_tokens_details": {
+        "cached_tokens": 4203
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The most relevant boundary case is the **exact match condition** where `x === n` (the function's index), because this triggers the unique \"addition\" branch (`x + n + 1`) rather than the default \"subtraction\" branch (`x - n`). This is critical because it represents the only point where the function's behavior deviates from a simple linear transformation, and it is the only case where the output is positive and larger than the input.\n\nThe **smallest useful regression test** should verify this boundary condition for at least one representative function (e.g., `rule0` or `rule13"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "fresh",
+    "trial": 4,
+    "wall_s": 7.774717161999433,
+    "metrics": {
+      "prompt_tokens": 8830.0,
+      "reused": 0.0,
+      "fresh": 8830.0,
+      "prefill_ms": 6264.0,
+      "prefill_tps": 1409.7,
+      "generated": 128.0,
+      "decode_ms": 1505.0,
+      "decode_tps": 85.1
+    },
+    "usage": {
+      "prompt_tokens": 8830,
+      "completion_tokens": 128,
+      "total_tokens": 8958,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The source code defines a series of exported functions named `rule0` through `rule279`, each accepting a single numeric argument `x`. Every function follows an identical logical pattern: it checks if the input `x` is strictly equal to the integer value embedded in its name (e.g., `rule5` checks for `5`). If this condition is true, the function returns `x + 1`; otherwise, it returns `x - 1`. Consequently, each specific rule acts as a conditional modifier that increments the input by one only when the input matches the rule's index, and decrements the input by one"
+    }
+  },
+  {
+    "label": "s0213-p2",
+    "kind": "followup",
+    "trial": 4,
+    "wall_s": 1.8934054800010927,
+    "metrics": {
+      "prompt_tokens": 9071.0,
+      "reused": 8958.0,
+      "fresh": 113.0,
+      "prefill_ms": 411.0,
+      "prefill_tps": 274.9,
+      "generated": 128.0,
+      "decode_ms": 1478.0,
+      "decode_tps": 86.6
+    },
+    "usage": {
+      "prompt_tokens": 9071,
+      "completion_tokens": 128,
+      "total_tokens": 9199,
+      "prompt_tokens_details": {
+        "cached_tokens": 8958
+      }
+    },
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "content": "The most relevant boundary case is the **exact match condition** where `x` equals the rule's index (e.g., `rule5(5)`), which triggers the increment branch (`x + 1`) rather than the decrement branch (`x - 1`). This distinguishes the function from a simple arithmetic operation and validates the core logic.\n\nThe **smallest useful regression test** is:\n```javascript\nassert(rule0(0) === 1); // Boundary: x=0 matches rule index, returns 0+1=1\nassert(rule0(-1) === -2); // Negative input: does"
+    }
+  }
+]

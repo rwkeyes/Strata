@@ -104,6 +104,7 @@ Full write-up: [`dirigo-results/notes/improvements-2026-11-08.md`](dirigo-result
 | `standard-benchmark/` | the standard-protocol result folder: `README.md`, `results.json`, `outputs.jsonl`, `config.json`, template and corpus provenance, plus the operator's hardware correction |
 | `community-report/` | the three-build comparison (0.2.11 / 0.2.12 / stock 0.2.12): README, per-request JSON, the two probe scripts |
 | `guidellm/` | GuideLLM 0.8.1 results: 0.2.11, 0.2.12, 0.2.12-with-shadow, and the summaries |
+| `0.2.13-port/` | fork vs **stock v0.2.13**: same battery both sides, GuideLLM side by side, the chart, the raw JSON, and the correction log from re-deriving every number |
 | `payload-0.2.11/` | the previous engine payload's record (MANIFEST, ARCHS, release notes, GuideLLM results, selftest) migrated from the old payload repo; the binaries themselves live with the payload, not in git |
 
 ## Run it
@@ -139,5 +140,6 @@ branches on this fork:
 | `bench/arc-pro-b70-0212` | #5522 — the community-format benchmark report (ready) |
 | `bench/arc-pro-b70-standard-1` | #5556 — the standard-protocol pilot on this card (ready) |
 | `tests/hip-ordinal-host-independent` | #5602 — `test_hip_ordinal` without the host's AMD topology (ready) |
+| `port/0.2.13` | the 0.2.12 carry replayed onto **v0.2.13**, built and measured against stock v0.2.13 — report in [`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/) |
 
 `main` on this fork stays a mirror of upstream; this branch is where Dirigo's verified state lives.
