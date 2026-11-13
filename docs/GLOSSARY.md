@@ -54,7 +54,9 @@ A small built-in model that guesses the next few words so the big model can chec
 guesses; the big model still decides every word, so answers do not change. See also **spec**.
 
 Every build of Strata has it — stock and this fork run the same draft layer, so it is not a difference between them.
-What this fork adds is only the ability to set its depth per request (`spec=N`) and a draft window (`spec_window`).
+What this fork adds is control over it: a per-request depth (`spec=N`, clamped to the startup value), a per-request
+prompt-lookup switch (`lookup=0|1`) and a window policy that serves some traffic at a lower depth (`spec_window`).
+Stock sets `--spec` and `--suffix-draft` once at startup; both sides can retune `spec_min_p` per request.
 
 **PLE table**
 The large lookup table (28.8 GB for Qwen3.8-Flash-Next) that Strata reads a few rows of per token from the SSD
