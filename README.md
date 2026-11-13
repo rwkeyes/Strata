@@ -29,7 +29,8 @@ engine's performance is not ours. It comes from four decisions:
 - **Long prompts are read in big pieces** (up to 8,192 tokens), which is why a long document is read at over
   1,000 tokens a second, and a follow-up reuses the context already read instead of starting over.
 - **A 28.8 GB lookup table lives on the SSD** and is read a few rows per token, so it costs disk bandwidth
-  instead of memory.
+  instead of memory. It is the model's second file: one `per_layer_token_embd.weight` tensor of 160 × 320,001,536
+  values at 4 bits — 28,800,138,240 bytes, decimal GB, 26.8 GiB.
 - **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
   of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
 

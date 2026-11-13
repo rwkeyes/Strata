@@ -57,6 +57,12 @@ guesses; the big model still decides every word, so answers do not change. See a
 The large lookup table (28.8 GB for Qwen3.8-Flash-Next) that Strata reads a few rows of per token from the SSD
 instead of holding in memory. `--ple-gguf` points at it; `--ple-io` chooses how it is read.
 
+The size is not a round number chosen by a doc: it is the model's **second file**, one tensor
+`per_layer_token_embd.weight` of 160 × 320,001,536 values stored as IQ4_NL (18 bytes per 32 values), which is
+160 × 320,001,536 × 18/32 = **28,800,138,240 bytes**. "28.8 GB" throughout these guides is decimal GB — the same
+file reads 26.8 GiB in `df`. A pack that stores the table in another type is bigger: Unsloth's UD-Q6_K_XL keeps it
+as Q8_0 (170 bytes per 160-value row) and the same table becomes 54.4 GB.
+
 ## The engine
 
 **Engine**
