@@ -215,8 +215,8 @@ Same card, same engine version (0.1.59), same model and pack, same server config
 
 **The short version.** On a stream of fresh prompts the first token arrives **11–22 % sooner** — 739 ms against
 stock's 949 ms at one stream — and at four streams the same 45-second window finishes **three more answers**. Nothing
-is traded for it: prefill and decode are within 1.1 % of stock on all eight engine-level legs, because the engine
-version is the same on both sides and the difference is entirely in the server.
+is traded for it: prefill and decode are within 1.1 % of stock on all eight engine-level legs, and the gain is a
+server-side one — the engine measures the same on both sides.
 
 <p align="center">
   <img src="dirigo-results/0.2.13-port/chart.svg" width="1000" alt="Time to first token, Dirigo 0.2.13 vs stock 0.2.13 on an Intel Arc Pro B70: 739 vs 949 ms at one stream, 2622 vs 3163 at two, 6688 vs 7500 at four, 9641 vs 9659 at eight. Engine-level prefill and decode are within 1.1 percent on all eight legs.">
