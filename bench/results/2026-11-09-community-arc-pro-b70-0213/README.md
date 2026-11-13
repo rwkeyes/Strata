@@ -13,12 +13,12 @@ Every figure in the chart is recomputed from the JSON files in this folder by `s
 
 ## Headline
 
-| | Dirigo port | stock v0.2.13 | difference |
-| --- | ---: | ---: | ---: |
-| Time to first token, 1 stream (median) | **739 ms** | 949 ms | **−22.1 %** |
-| Time to first token, 2 streams | **2,622 ms** | 3,163 ms | **−17.1 %** |
-| Time to first token, 4 streams | **6,688 ms** | 7,500 ms | **−10.8 %** |
-| Time to first token, 8 streams | 9,641 ms | 9,659 ms | −0.2 % (equal) |
+| | Dirigo port | stock v0.2.13 | first token arrives sooner by | same measurement, other way round |
+| --- | ---: | ---: | ---: | ---: |
+| Time to first token, 1 stream (median) | **739 ms** | 949 ms | **210 ms (22.1 %)** | stock needs 28.4 % longer |
+| Time to first token, 2 streams | **2,622 ms** | 3,163 ms | **541 ms (17.1 %)** | stock needs 20.6 % longer |
+| Time to first token, 4 streams | **6,688 ms** | 7,500 ms | **812 ms (10.8 %)** | stock needs 12.1 % longer |
+| Time to first token, 8 streams | 9,641 ms | 9,659 ms | 18 ms — equal | equal |
 | Requests finished in a fixed 45 s window, 1 / 2 / 4 / 8 streams | 22 / 22 / 22 / 23 | 21 / 20 / 19 / 21 | +1 / +2 / +3 / +2 |
 | Prefill and decode, direct to the engine, 8 legs | — | — | **parity, largest gap 1.1 %** |
 | Unit suite | **1,537 OK** | 1,512, 1 failure | — |
@@ -176,8 +176,10 @@ have, and is **10.8–22.1 % sooner to first token at 1–4 concurrent streams**
 the same model.
 
 Does not show: anything about other GPUs or other engines; a full statistical treatment of the GuideLLM gap (one pass
-per arm); any benefit from 0.2.13's bf16 determinism change, which this hardware did not need; or a speed win for
-conversational traffic, where the fork turns the cache back on and behaves like stock.
+per arm); any benefit from 0.2.13's bf16 determinism change, which this hardware did not need; a speed win for
+conversational traffic, where the fork turns the cache back on and behaves like stock; or a speed win as clients are
+added — the advantage falls from 22 % to 17 % to 11 % at one, two and four concurrent clients and is gone at eight,
+because every arm here ran one request at a time (`--batch 0`).
 
 ## Reproducing
 
