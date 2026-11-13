@@ -69,6 +69,7 @@ changes are much smaller and server-side; they are in [What this fork changes](#
 | Check my hardware before downloading anything | [What you need](#what-you-need) · [which model fits](docs/MODELS.md#pick-by-memory) | 5 min |
 | Understand the engine | [How it works](docs/HOW_IT_WORKS.md) · [technical reference](docs/DETAILS.md) | — |
 | Read the evidence for the numbers | [`DIRIGO.md`](DIRIGO.md) · [`dirigo-results/`](dirigo-results/) | — |
+| See how it compares to stock 0.2.13 | [Measured side by side](#what-it-is-worth-measured-this-fork-vs-stock-strata-v0213) | — |
 | All guides, page by page | [Documentation index](docs/README.md) | — |
 
 ## What you need
@@ -203,8 +204,35 @@ change; with none of them enabled the server behaves as stock.
 | retune between requests | change engine settings on a live server — no restart, no reload |
 | per-request draft depth | a client can set its own speculation depth for one request |
 
-Measured effect, limits and the full list: [`DIRIGO.md`](DIRIGO.md). The parts that belong upstream are open
-as separate branches listed there.
+### What it is worth, measured: this fork vs stock Strata v0.2.13
+
+Same card, same engine version (0.1.59), same model and pack, same server config, same requests. GuideLLM 0.8.1,
+512 tokens in / 128 out, one pass per arm.
+
+<p align="center">
+  <img src="dirigo-results/0.2.13-port/chart.svg" width="1000" alt="Time to first token, Dirigo 0.2.13 vs stock 0.2.13 on an Intel Arc Pro B70: 739 vs 949 ms at one stream, 2622 vs 3163 at two, 6688 vs 7500 at four, 9641 vs 9659 at eight. Engine-level prefill and decode are within 1.1 percent on all eight legs.">
+</p>
+
+| | this fork | stock v0.2.13 | difference |
+| --- | ---: | ---: | ---: |
+| First token, 1 stream | **739 ms** | 949 ms | **−22.1 %** |
+| First token, 2 streams | **2,622 ms** | 3,163 ms | **−17.1 %** |
+| First token, 4 streams | **6,688 ms** | 7,500 ms | **−10.8 %** |
+| First token, 8 streams | 9,641 ms | 9,659 ms | equal |
+| Requests finished per 45 s window, 1–8 streams | 22 / 22 / 22 / 23 | 21 / 20 / 19 / 21 | +1 / +2 / +3 / +2 |
+| Prefill and decode, direct to the engine, 8 legs | — | — | parity, largest gap 1.1 % |
+
+**The engine is the same speed; the server answers sooner.** On a stream of unique prompts the router serves with
+the prompt cache off, so there is no pool work between the request and the first token; a conversation switches it
+back on, which is what stock always does. That is also why 8 streams show no gap — queueing dominates there.
+
+> **Measured on:** Intel Arc Pro B70 32 GB, Ryzen 7 7700X, Qwen3.8-Flash-Next Coder IQ1_M, engine 0.1.59 on both
+> sides, 2026-11-09. One pass per arm in one session; positional drift in this rig is 2–4 %, so the 10.8–22.1 %
+> first-token gaps are larger than the drift and the one-request throughput difference at 1 stream is not.
+> Errors: 0 in both arms. Full report, raw JSON and the script that recomputes every figure:
+> [`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/).
+
+The parts that belong upstream are open as separate branches listed in [`DIRIGO.md`](DIRIGO.md).
 
 ## Repository map
 
@@ -219,7 +247,7 @@ as separate branches listed there.
 | `tools/` | pack building, calibration and measurement tools |
 | `bench/` | benchmark protocol and community results |
 | `docs/` | all guides — [index](docs/README.md) |
-| `dirigo-results/` | this fork's measurements, benchmark results and the carry patch |
+| `dirigo-results/` | this fork's measurements: the 0.2.12 evidence, the 0.2.13 fork-vs-stock report and chart, the carry patch |
 
 ## Licence
 

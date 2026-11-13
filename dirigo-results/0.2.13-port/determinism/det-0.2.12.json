@@ -1,0 +1,174 @@
+{
+ "label": "0.2.12",
+ "runs": 10,
+ "prompts": {
+  "code": {
+   "distinct": 1,
+   "shas": {
+    "6c25ef8d7d1c": 10
+   },
+   "chars": [
+    192,
+    192,
+    192,
+    192,
+    192,
+    192,
+    192,
+    192,
+    192,
+    192
+   ],
+   "walls": [
+    0.97,
+    0.69,
+    0.7,
+    0.7,
+    0.71,
+    0.7,
+    0.71,
+    0.7,
+    0.71,
+    0.7
+   ],
+   "answers": [
+    {
+     "text": "```python\nimport re\n\ndef word_freq(text):\n    words = re.findall(r'[a-z0-9]+', text.lower())\n    freq = {}\n    for word in words:\n        freq[word] = freq.get(word, 0) + 1\n    return freq\n```",
+     "sha": "6c25ef8d7d1c",
+     "chars": 192,
+     "wall": 0.97,
+     "finish": "stop",
+     "tokens": 64
+    },
+    {
+     "text": "```python\nimport re\n\ndef word_freq(text):\n    words = re.findall(r'[a-z0-9]+', text.lower())\n    freq = {}\n    for word in words:\n        freq[word] = freq.get(word, 0) + 1\n    return freq\n```",
+     "sha": "6c25ef8d7d1c",
+     "chars": 192,
+     "wall": 0.69,
+     "finish": "stop",
+     "tokens": 64
+    },
+    {
+     "text": "```python\nimport re\n\ndef word_freq(text):\n    words = re.findall(r'[a-z0-9]+', text.lower())\n    freq = {}\n    for word in words:\n        freq[word] = freq.get(word, 0) + 1\n    return freq\n```",
+     "sha": "6c25ef8d7d1c",
+     "chars": 192,
+     "wall": 0.7,
+     "finish": "stop",
+     "tokens": 64
+    }
+   ]
+  },
+  "prose": {
+   "distinct": 1,
+   "shas": {
+    "9a55ca5778d1": 10
+   },
+   "chars": [
+    547,
+    547,
+    547,
+    547,
+    547,
+    547,
+    547,
+    547,
+    547,
+    547
+   ],
+   "walls": [
+    1.72,
+    1.47,
+    1.48,
+    1.48,
+    1.48,
+    1.48,
+    1.48,
+    1.48,
+    1.49,
+    1.48
+   ],
+   "answers": [
+    {
+     "text": "A B-tree maintains logarithmic height because it enforces strict balance through node splitting and merging. During insertion, if a node exceeds its capacity, it splits, propagating changes upward to the root. This ensures all leaves remain at the same depth. Since each split increases the branching factor, the number of nodes grows exponentially with height. Consequently, even after random insertions, the tree\u2019s height remains proportional to log(n), guaranteeing efficient O(log n) search and update operations regardless of insertion order.",
+     "sha": "9a55ca5778d1",
+     "chars": 547,
+     "wall": 1.72,
+     "finish": "stop",
+     "tokens": 102
+    },
+    {
+     "text": "A B-tree maintains logarithmic height because it enforces strict balance through node splitting and merging. During insertion, if a node exceeds its capacity, it splits, propagating changes upward to the root. This ensures all leaves remain at the same depth. Since each split increases the branching factor, the number of nodes grows exponentially with height. Consequently, even after random insertions, the tree\u2019s height remains proportional to log(n), guaranteeing efficient O(log n) search and update operations regardless of insertion order.",
+     "sha": "9a55ca5778d1",
+     "chars": 547,
+     "wall": 1.47,
+     "finish": "stop",
+     "tokens": 102
+    },
+    {
+     "text": "A B-tree maintains logarithmic height because it enforces strict balance through node splitting and merging. During insertion, if a node exceeds its capacity, it splits, propagating changes upward to the root. This ensures all leaves remain at the same depth. Since each split increases the branching factor, the number of nodes grows exponentially with height. Consequently, even after random insertions, the tree\u2019s height remains proportional to log(n), guaranteeing efficient O(log n) search and update operations regardless of insertion order.",
+     "sha": "9a55ca5778d1",
+     "chars": 547,
+     "wall": 1.48,
+     "finish": "stop",
+     "tokens": 102
+    }
+   ]
+  },
+  "extract": {
+   "distinct": 1,
+   "shas": {
+    "9dbf53893542": 10
+   },
+   "chars": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "walls": [
+    0.58,
+    0.25,
+    0.27,
+    0.26,
+    0.27,
+    0.26,
+    0.27,
+    0.26,
+    0.27,
+    0.26
+   ],
+   "answers": [
+    {
+     "text": "2024-03-02",
+     "sha": "9dbf53893542",
+     "chars": 10,
+     "wall": 0.58,
+     "finish": "stop",
+     "tokens": 11
+    },
+    {
+     "text": "2024-03-02",
+     "sha": "9dbf53893542",
+     "chars": 10,
+     "wall": 0.25,
+     "finish": "stop",
+     "tokens": 11
+    },
+    {
+     "text": "2024-03-02",
+     "sha": "9dbf53893542",
+     "chars": 10,
+     "wall": 0.27,
+     "finish": "stop",
+     "tokens": 11
+    }
+   ]
+  }
+ }
+}
