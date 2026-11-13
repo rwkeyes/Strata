@@ -21,7 +21,7 @@ measurements behind it kept in [`dirigo-results/`](dirigo-results/). What was ve
 ## Why it is fast
 
 The speed is **upstream Strata's** — Niko1221's engine. This fork adds server behaviour on top of it; the
-engine's performance is not ours. It comes from four decisions:
+engine's own performance is not ours. It comes from four decisions:
 
 - **Only the experts a word needs are computed.** Qwen3.8-Flash-Next is 24,576 small specialists and a word
   needs about ten. The busiest live on the card (each free GB holds roughly 700 more), every expert stays in RAM, and the
@@ -34,28 +34,57 @@ engine's performance is not ours. It comes from four decisions:
 - **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
   of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
 
-What upstream's releases actually changed, each measured against the release before it:
+On the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M) that comes out at **1,404 tok/s**
+reading a 4K prompt and 1,773 at 16K, **80.8 and 68.1 tok/s** writing, first token after 2.94 s and 9.27 s —
+[those measurements](DIRIGO.md#speed-against-stock-measured-with-guidellm-the-standard-tool). How each step of the
+engine's speed was won is the [history table in `docs/DETAILS.md`](docs/DETAILS.md); it is not repeated here.
 
-| Release | Hardware | Effect |
-| --- | --- | --- |
-| 0.1.13 | RTX 5070 12 GB | 8,192-token prompt chunks + quantised kernels: prompt **572 → 1,290 tok/s** (Q2_0), 383 → 1,208 (IQ3_S) |
-| 0.2.0 | RTX PRO 5000 emulating a 12 GB card, 32 GB RAM | zero-copy and I/O prefetch: decode **1.7 / 2.6 / 2.9×** (story / code / 8K document), prompts 1.5× and 1.9× |
-| 0.2.4 | RTX 5070 + Ryzen 5 7600 | exact CPU rows for the experts the card does not hold: decode **4.08 → 5.11 tok/s** (+25%), prompts +26% |
-| 0.2.7 | RTX 3060 12 GB | router prefers experts already on the card: story **+15%**, code **+37%** |
-| 0.2.7 | Radeon AI PRO R9700 | 8K prompt **+22%**, 32K decode **+31%**, 8K decode +14% |
-| 0.2.7 | 2 × RTX A4000 | layer-major prefill on a layer split: first word after a 32K prompt **141.8 s → 27.7 s** |
+### Against stock v0.2.13, on the same card
 
-> **Measured on:** exactly what each row names, in paired or interleaved runs against the previous release,
-> taken from the release notes and the [engine history table](docs/DETAILS.md). One machine, one model and one
-> workload per row; none of them is a promise for another card.
+Same card, same engine version (0.1.59), same model and pack, same server config, same request stream. GuideLLM
+0.8.1, 512 tokens in / 128 out, one pass per arm.
 
-End to end on the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M): **1,404 tok/s**
-prompt at 4K and 1,773 at 16K, **80.8 and 68.1 tok/s** decode, first token after 2.94 s and 9.27 s —
-[the measurements](DIRIGO.md#speed-against-stock-measured-with-guidellm-the-standard-tool).
+**The short version.** The first token arrives **11–22 % sooner** on a stream of fresh prompts — 739 ms against
+stock's 949 ms at one stream — and at four streams the same 45-second window finishes **three more answers**. Nothing
+is traded for it: prefill and decode are within 1.1 % of stock on all eight engine-level legs, and the gain is a
+server-side one — the engine measures the same on both sides.
 
-The fork's own changes are smaller and server-side. Measured against stock v0.2.13 on the same card and the same
-engine version, they make the first token arrive **11–22 % sooner** at one to four streams, and answer short requests
-that stock truncates — the engine itself is at parity. [How much, and where it does not apply](#what-it-is-worth-measured-this-fork-vs-stock-strata-v0213).
+<p align="center">
+  <img src="dirigo-results/0.2.13-port/chart.svg" width="1000" alt="Time to first token, Dirigo 0.2.13 vs stock 0.2.13 on an Intel Arc Pro B70: 739 vs 949 ms at one stream, 2622 vs 3163 at two, 6688 vs 7500 at four, 9641 vs 9659 at eight. Engine-level prefill and decode are within 1.1 percent on all eight legs.">
+</p>
+
+| streams | first token, this fork | stock v0.2.13 | arrives sooner by | read the other way: stock needs |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | **739 ms** | 949 ms | **210 ms (22.1 %)** | 28.4 % longer |
+| 2 | **2,622 ms** | 3,163 ms | **541 ms (17.1 %)** | 20.6 % longer |
+| 4 | **6,688 ms** | 7,500 ms | **812 ms (10.8 %)** | 12.1 % longer |
+| 8 | 9,641 ms | 9,659 ms | 18 ms — equal | equal |
+
+The last two columns are one measurement read two ways: 739 ms is 22.1 % below 949 ms, and 949 ms is 28.4 % above
+739 ms. "Arrives sooner" is the column to quote. In the same 45-second window the fork finishes 22 / 22 / 22 / 23
+requests against 21 / 20 / 19 / 21 — 62.6 / 62.6 / 62.6 / 65.4 output tokens a second against 59.7 / 56.9 / 54.0 / 59.7.
+
+**Why the gap exists.** A fresh prompt is the one case the two servers handle differently. Stock opens the prompt
+cache and pays the pool work before it can emit a token. The fork's router recognises a run of unique prompts as
+one-shot traffic and serves it with the cache **off** — no pool work between the request and the first token — then
+switches the cache back on the moment the traffic looks like a conversation. That is why the advantage is largest
+with requests arriving one at a time, and gone at eight streams where both servers are queue-bound.
+
+**The same config also changes answers, not just timing.** Asked for a date inside a 24-token budget ("Invoice
+INV-7 dated 9 June 2024 → ISO date"), stock spends all 24 tokens on reasoning and returns an empty string; the fork
+returns `2024-06-09` with zero reasoning characters. The port's suite is green — 1,537 tests, 17 skipped — where the
+stock tree has one failure (`test_hip_ordinal`, a test that reads the host's AMD topology; fixed upstream in
+[#5602](https://github.com/Niko1221/Strata/pull/5602)).
+
+**What this does not claim.** A faster engine — it is the same speed, and this table would look identical for any
+server-side change. A win on conversational traffic, where the fork turns the cache back on and behaves like stock.
+A throughput difference at one stream: one extra request in a 45-second window is the measurement's own granularity
+(4.8 %), and it is reported rather than counted as a win.
+
+> **Measured on:** Intel Arc Pro B70 32 GB, Ryzen 7 7700X, Qwen3.8-Flash-Next Coder IQ1_M, engine 0.1.59 on both
+> sides, 2026-11-09. One pass per arm in one session; positional drift in this rig is 2–4 %, so the 10.8–22.1 %
+> first-token gaps sit outside it. Errors: 0 in both arms. Full report, raw JSON and the script that recomputes
+> every figure: [`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/).
 
 > **Never used Strata before?** Start with [Getting started](docs/GETTING-STARTED.md) — it walks from "what is
 > this" to your first answer, and explains every word Strata uses in [plain language](docs/GLOSSARY.md).
@@ -73,7 +102,7 @@ that stock truncates — the engine itself is at parity. [How much, and where it
 | Check my hardware before downloading anything | [What you need](#what-you-need) · [which model fits](docs/MODELS.md#pick-by-memory) | 5 min |
 | Understand the engine | [How it works](docs/HOW_IT_WORKS.md) · [technical reference](docs/DETAILS.md) | — |
 | Read the evidence for the numbers | [`DIRIGO.md`](DIRIGO.md) · [`dirigo-results/`](dirigo-results/) | — |
-| See how it compares to stock 0.2.13 | [Measured side by side](#what-it-is-worth-measured-this-fork-vs-stock-strata-v0213) | — |
+| See how it compares to stock 0.2.13 | [Measured side by side](#against-stock-v0213-on-the-same-card) | — |
 | All guides, page by page | [Documentation index](docs/README.md) | — |
 
 ## What you need
@@ -208,56 +237,12 @@ change; with none of them enabled the server behaves as stock.
 | retune between requests | change engine settings on a live server — no restart, no reload |
 | per-request draft depth | a client can set its own speculation depth for one request |
 
-### What it is worth, measured: this fork vs stock Strata v0.2.13
+### What it is worth, measured
 
-Same card, same engine version (0.1.59), same model and pack, same server config, same request stream. GuideLLM
-0.8.1, 512 tokens in / 128 out, one pass per arm.
-
-**The short version.** On a stream of fresh prompts the first token arrives **11–22 % sooner** — 739 ms against
-stock's 949 ms at one stream — and at four streams the same 45-second window finishes **three more answers**. Nothing
-is traded for it: prefill and decode are within 1.1 % of stock on all eight engine-level legs, and the gain is a
-server-side one — the engine measures the same on both sides.
-
-<p align="center">
-  <img src="dirigo-results/0.2.13-port/chart.svg" width="1000" alt="Time to first token, Dirigo 0.2.13 vs stock 0.2.13 on an Intel Arc Pro B70: 739 vs 949 ms at one stream, 2622 vs 3163 at two, 6688 vs 7500 at four, 9641 vs 9659 at eight. Engine-level prefill and decode are within 1.1 percent on all eight legs.">
-</p>
-
-| streams | first token, this fork | stock v0.2.13 | arrives sooner by | read the other way: stock needs |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | **739 ms** | 949 ms | **210 ms (22.1 %)** | 28.4 % longer |
-| 2 | **2,622 ms** | 3,163 ms | **541 ms (17.1 %)** | 20.6 % longer |
-| 4 | **6,688 ms** | 7,500 ms | **812 ms (10.8 %)** | 12.1 % longer |
-| 8 | 9,641 ms | 9,659 ms | 18 ms — equal | equal |
-
-The last two columns are one measurement read two ways: 739 ms is 22.1 % below 949 ms, and 949 ms is 28.4 % above
-739 ms. "Arrives sooner" is the column to quote.
-
-| work done in the same 45 s window | this fork | stock v0.2.13 |
-| --- | ---: | ---: |
-| requests finished, 1 / 2 / 4 / 8 streams | 22 / 22 / 22 / 23 | 21 / 20 / 19 / 21 |
-| output tokens per second in that window, 1 / 2 / 4 / 8 | 62.6 / 62.6 / 62.6 / 65.4 | 59.7 / 56.9 / 54.0 / 59.7 |
-
-**Why the gap exists.** A fresh prompt is the one case the two servers handle differently. Stock opens the prompt
-cache and pays the pool work before it can emit a token. The fork's router recognises a run of unique prompts as
-one-shot traffic and serves it with the cache **off** — no pool work between the request and the first token — then
-switches the cache back on the moment the traffic looks like a conversation. That is why the advantage is largest
-with requests arriving one at a time, and gone at eight streams where both servers are queue-bound.
-
-**The same config also changes answers, not just timing.** Asked for a date inside a 24-token budget ("Invoice
-INV-7 dated 9 June 2024 → ISO date"), stock spends all 24 tokens on reasoning and returns an empty string; the fork
-returns `2024-06-09` with zero reasoning characters. And the port's own suite is green — 1,537 tests, 17 skipped —
-where the stock tree has one failure (`test_hip_ordinal`, a test that reads the host's AMD topology; fixed upstream
-in [#5602](https://github.com/Niko1221/Strata/pull/5602)).
-
-**What this does not claim.** A faster engine — it is the same speed, and this table would look identical for any
-server-side change. A win on conversational traffic, where the fork turns the cache back on and behaves like stock.
-A throughput difference at one stream: one extra request in a 45-second window is the measurement's own granularity
-(4.8 %), and it is reported rather than counted as a win.
-
-> **Measured on:** Intel Arc Pro B70 32 GB, Ryzen 7 7700X, Qwen3.8-Flash-Next Coder IQ1_M, engine 0.1.59 on both
-> sides, 2026-11-09. One pass per arm in one session; positional drift in this rig is 2–4 %, so the 10.8–22.1 %
-> first-token gaps sit outside it. Errors: 0 in both arms. Full report, raw JSON and the script that recomputes
-> every figure: [`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/).
+The numbers are above, in [Against stock v0.2.13](#against-stock-v0213-on-the-same-card): first token 11–22 % sooner
+at one to four streams, engine at parity, and short requests answered that stock truncates. Full report, raw JSON,
+the chart and the script that recomputes every figure in it:
+[`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/).
 
 The parts that belong upstream are open as separate branches listed in [`DIRIGO.md`](DIRIGO.md).
 
