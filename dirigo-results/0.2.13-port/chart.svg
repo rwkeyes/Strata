@@ -1,5 +1,5 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='1180' height='1000' viewBox='0 0 1180 1000'>
-<rect width='1180' height='1000' fill='#ffffff'/>
+<svg xmlns='http://www.w3.org/2000/svg' width='1180' height='1032' viewBox='0 0 1180 1032'>
+<rect width='1180' height='1032' fill='#ffffff'/>
 <g font-family='ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif' fill='#1f2430'>
 <text x='34' y='46' font-size='23' font-weight='700'>Dirigo 0.2.13 vs stock 0.2.13 — same card, same requests</text>
 <text x='34' y='70' font-size='13.5' fill='#6b7280'>Intel Arc Pro B70 32 GB · engine 0.1.59 on both sides · Qwen3.8-Flash-Next Coder IQ1_M · GuideLLM 0.8.1, 512 in / 128 out, 45 s per point</text>
@@ -101,7 +101,8 @@
 <text x='318.0' y='844' font-size='11' fill='#1f2430'>23 requests · 65.4 tok/s</text>
 <rect x='162' y='849' width='137.0' height='11' rx='2' fill='#9aa4b2'/>
 <text x='305.0' y='859' font-size='11' fill='#6b7280'>21 requests · 59.7 tok/s</text>
-<line x1='34' y1='930' x2='1146' y2='930' stroke='#e5e7eb'/>
-<text x='34' y='948' font-size='11.5' fill='#6b7280'>Source: dirigo-results/0.2.13-port/guidellm/guidellm-0213ab-d0213.json and -s0213.json, medians of the per-request samples; battery/*.json. Recompute with scripts/make-chart.py.</text>
-<text x='34' y='965' font-size='11.5' fill='#6b7280'>One pass per arm in one session; the companion 0.2.12→0.2.13 run put positional drift at 2–4 %. GuideLLM sends unique prompts, so the fork's cache-off path applies — a conversation switches the cache back on.</text>
+<line x1='34' y1='962' x2='1146' y2='962' stroke='#e5e7eb'/>
+<text x='34' y='980' font-size='11.5' fill='#6b7280'>Source: dirigo-results/0.2.13-port/guidellm/guidellm-0213ab-d0213.json and -s0213.json, medians of the per-request samples; battery/*.json. Recompute with scripts/make-chart.py.</text>
+<text x='34' y='997' font-size='11.5' fill='#6b7280'>One pass per arm in one session; the companion 0.2.12→0.2.13 run put positional drift at 2–4 %. GuideLLM sends unique prompts, so the fork's cache-off path applies — a conversation switches the cache back on.</text>
+<text x='34' y='1014' font-size='11.5' font-weight='600' fill='#1f2430'>Single-user figures: both arms ran one request at a time, so the advantage falls to zero at eight concurrent clients, where the two servers are queueing.</text>
 </g></svg>

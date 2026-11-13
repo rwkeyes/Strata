@@ -31,6 +31,12 @@ had only the engine to show, this section would be empty. The difference is in t
 stream — and at four streams the same 45-second window finishes **three more answers**. Nothing is traded for it: the
 engine figures are parity, as above.
 
+> **The gain shrinks as more clients share the box.** This is a single-user number: one machine, one conversation.
+> The advantage falls from 22 % to 17 % to 11 % as concurrent clients go from one to two to four, and at eight there is
+> no difference at all (9,641 ms against 9,659 ms) — the engine serves one request at a time, so beyond one user both
+> servers are mostly queueing. If several people or agents will use the machine, size it for that with
+> `--batch`/`--slots` ([batching](docs/BATCHING.md)) and treat 22 % as the figure for one user.
+
 <p align="center">
   <img src="dirigo-results/0.2.13-port/chart.svg" width="1000" alt="Time to first token, Dirigo 0.2.13 vs stock 0.2.13 on an Intel Arc Pro B70: 739 vs 949 ms at one stream, 2622 vs 3163 at two, 6688 vs 7500 at four, 9641 vs 9659 at eight. Engine-level prefill and decode are within 1.1 percent on all eight legs.">
 </p>
@@ -52,10 +58,10 @@ requests against 21 / 20 / 19 / 21 — 62.6 / 62.6 / 62.6 / 65.4 output tokens a
   That is where the 22 % applies, and it is most desktop use.
 - **Two to four** is a few agents or tools sharing the box: an editor's assistant beside a terminal agent, or two
   people on one machine. 17 % and 11 % still apply.
-- **Eight** is a queue: a batch job, an evaluation harness, a team. Both servers ran these tests at `--batch 0` — one
-  request at a time — so eight clients mostly wait for their turn, and the two lines meet. If you need several
-  requests actually in flight, the engine takes `--batch`/`--slots` (2–8 in the usual case; `--parallel` in the
-  Terminal) and the numbers would be a different experiment — [batching](docs/BATCHING.md) covers that configuration.
+- **Eight** is a queue: a batch job, an evaluation harness, a team of people. Both servers ran these tests at
+  `--batch 0` — one request at a time — so eight clients wait their turn and the two lines meet, as the note above
+  says. For several requests actually in flight, `--batch`/`--slots` (2–8 in the usual case; `--parallel` in the
+  Terminal) is the setting, and the numbers would be a different experiment.
 
 **Where the difference comes from.** A fresh prompt is the one case the two servers handle differently. Stock opens
 the prompt cache and pays the pool work before it can emit a token. The fork's router recognises a run of unique

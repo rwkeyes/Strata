@@ -78,7 +78,7 @@ def main():
     g = guidellm()
     b = battery()
     D, S = g["d0213"], g["s0213"]
-    W, H = 1180, 1000
+    W, H = 1180, 1032
     s = []
     a = s.append
     a(f"<svg xmlns='http://www.w3.org/2000/svg' width='{W}' height='{H}' viewBox='0 0 {W} {H}'>")
@@ -164,6 +164,7 @@ def main():
     a(f"<line x1='34' y1='{fy-18}' x2='{W-34}' y2='{fy-18}' stroke='{GRID}'/>")
     a(f"<text x='34' y='{fy}' font-size='11.5' fill='{MUTED}'>Source: dirigo-results/0.2.13-port/guidellm/guidellm-0213ab-d0213.json and -s0213.json, medians of the per-request samples; battery/*.json. Recompute with scripts/make-chart.py.</text>")
     a(f"<text x='34' y='{fy+17}' font-size='11.5' fill='{MUTED}'>One pass per arm in one session; the companion 0.2.12→0.2.13 run put positional drift at 2–4 %. GuideLLM sends unique prompts, so the fork's cache-off path applies — a conversation switches the cache back on.</text>")
+    a(f"<text x='34' y='{fy+34}' font-size='11.5' font-weight='600' fill='{INK}'>Single-user figures: both arms ran one request at a time, so the advantage falls to zero at eight concurrent clients, where the two servers are queueing.</text>")
     a("</g></svg>")
     out = os.path.join(BENCH, "chart.svg")
     open(out, "w").write("\n".join(s))

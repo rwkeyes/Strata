@@ -176,8 +176,10 @@ have, and is **10.8–22.1 % sooner to first token at 1–4 concurrent streams**
 the same model.
 
 Does not show: anything about other GPUs or other engines; a full statistical treatment of the GuideLLM gap (one pass
-per arm); any benefit from 0.2.13's bf16 determinism change, which this hardware did not need; or a speed win for
-conversational traffic, where the fork turns the cache back on and behaves like stock.
+per arm); any benefit from 0.2.13's bf16 determinism change, which this hardware did not need; a speed win for
+conversational traffic, where the fork turns the cache back on and behaves like stock; or a speed win as clients are
+added — the advantage falls from 22 % to 17 % to 11 % at one, two and four concurrent clients and is gone at eight,
+because every arm here ran one request at a time (`--batch 0`).
 
 ## Reproducing
 
