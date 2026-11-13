@@ -21,27 +21,22 @@ measurements behind it kept in [`dirigo-results/`](dirigo-results/). What was ve
 ## Why it is fast
 
 Stock Strata v0.2.13 and this fork run the **same engine version (0.1.59)**, so the engine's speed is upstream's —
-Niko1221's — and identical on both sides. Four decisions make that engine fast:
+Niko1221's — and identical on both sides. Three decisions make that engine fast:
 
 - **Only the experts a word needs are computed.** Qwen3.8-Flash-Next is 24,576 small specialists and a word
   needs about ten. The busiest live on the card (each free GB holds roughly 700 more), every expert stays in RAM, and the
   CPU computes the ones the card does not hold *at the same time* as the card works — neither waits.
 - **Long prompts are read in big pieces** (up to 8,192 tokens), which is why a long document is read at over
   1,000 tokens a second, and a follow-up reuses the context already read instead of starting over.
-- **A 28.8 GB lookup table lives on the SSD** and is read a few rows per token, so it costs disk bandwidth
-  instead of memory. It belongs to the **model**, not to either engine: the publisher's second file, one
-  `per_layer_token_embd.weight` tensor of 160 × 320,001,536 values at 4 bits — 28,800,138,240 bytes, decimal GB,
-  26.8 GiB. Stock and this fork read the same file.
 - **Guess, then check.** The model's built-in draft layer guesses up to three tokens and the model verifies all
   of them in one pass (2.4–3.2 tokens per pass), so an answer arrives 1.6–1.8× sooner with the same text.
 
-**Both versions do all four.** The expert split, the 28.8 GB table and guess-then-check — the MTP draft layer — are
-stock behaviour, not fork features, and the carry does not change how any of them runs; that is why the comparison
-below builds the same engine version on both sides. (The one PLE file the carry touches is `ple_parity`, that table's
-self-test, which now skips instead of failing when the model file is not on the box.) What the fork adds around drafting is two settings a client or a
-config can send — a per-request depth (`spec=N`) and a draft window (`spec_window`) — and neither is used by the
-measurement: `spec_window` was 0, and GuideLLM never sends `spec`. The fork's measured difference is on the
-**server** side, which is the next section.
+**All three are stock behaviour.** The expert split, the prompt-chunk reads and guess-then-check (the MTP draft layer)
+work the same on both sides — the carry changes nothing in how they run, which is why the comparison below builds the
+same engine version for both arms. What the fork adds around drafting is two settings a client or a config can send —
+a per-request depth (`spec=N`) and a draft window (`spec_window`) — and neither is used by the measurement:
+`spec_window` was 0, and GuideLLM never sends `spec`. The fork's measured difference is on the **server** side,
+which is the next section.
 
 On the card this branch was verified on (Arc Pro B70, Qwen3.8-Flash-Next Coder IQ1_M) that comes out at **1,404 tok/s**
 reading a 4K prompt and 1,773 at 16K, **80.8 and 68.1 tok/s** writing, first token after 2.94 s and 9.27 s —
@@ -123,9 +118,13 @@ counts once. Check [which model fits](docs/MODELS.md#pick-by-memory) before you 
 | | Requirement |
 | --- | --- |
 | Graphics card | NVIDIA RTX 20/30/40/50 · AMD Radeon RX 7000/9000 and AI PRO R9700 (RX 6000 experimental) · Intel Arc on Linux · Apple Silicon |
-| Memory | ~32–55 GB for Qwen3.8-Flash-Next; 46–64 GB RAM plus a 12 GB card for DeepSeek V4.1-Flash |
-| Disk | SSD with room for the model — roughly 40 GB for Qwen3.8-Flash-Next, 239–274 GB for DeepSeek V4.1-Flash |
+| Memory | 38–55 GB of RAM + VRAM for the Qwen3.8-Flash-Next packs (37.6 GB for the smallest), with room left for the OS; 46–64 GB of system RAM plus a 12 GB card for DeepSeek V4.1-Flash |
+| Disk | SSD: **66–84 GB** for Qwen3.8-Flash-Next — the pack plus the model's 28.8 GB lookup table — and 239–274 GB for DeepSeek V4.1-Flash |
 | To build from source | Python 3, CMake 3.24+, Ninja, a C++20 compiler, and your GPU's toolkit (CUDA, ROCm, oneAPI or Xcode) |
+
+The 28.8 GB in that disk figure is the model's lookup table, not the engine's: it is the publisher's second file,
+read from the SSD a few rows at a time instead of being held in memory. It belongs to every pack of this model, stock
+or fork alike — [what it is and where the size comes from](docs/GLOSSARY.md#the-model).
 
 The card-specific details are in [NVIDIA](docs/INSTALL.md#what-you-need), [AMD](docs/AMD_HIP.md),
 [Intel Arc](docs/INTEL_ARC.md), [Mac](docs/MAC.md), [multiple GPUs](docs/MULTI_GPU.md).

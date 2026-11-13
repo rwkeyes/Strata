@@ -67,6 +67,9 @@ re-encodes it. The size is not a round number chosen by a doc: it is the publish
 file reads 26.8 GiB in `df`. A pack that stores the table in another type is bigger: Unsloth's UD-Q6_K_XL keeps it
 as Q8_0 (170 bytes per 160-value row) and the same table becomes 54.4 GB.
 
+In this fork the only PLE-related source change is `ple_parity`, that table's self-test: it now reports a missing
+model file as a skip instead of a failure. The reader, the encoding and the file are untouched.
+
 ## The engine
 
 **Engine**
