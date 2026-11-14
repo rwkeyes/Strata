@@ -59,6 +59,7 @@ Use the guide for your GPU and operating system. Model and feature support can d
 
 ## This fork
 
+- [Performance: what has been tried, and what is left](PERF-NEXT.md)
 - [Verified build, measurements and evidence](../DIRIGO.md)
 - [Measurements, suite logs and the carry patch](../dirigo-results/)
 - [Glossary of every term](GLOSSARY.md)
