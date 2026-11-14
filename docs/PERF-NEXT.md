@@ -36,6 +36,7 @@ important as the open one.
 | `--ple-row-cache` 4 M / 16 M rows, `--ple-inflight` 1024 | 4 M rows and inflight 1024 are **flat** (inside the 0.2–3.6 % drift band); 16 M rows (1.44 GB) costs **−8 % on fresh 4.2k, −8…−12 % on 8.8k, −17 % on a 4.4k follow-up, −10 % on 30k**. The 94 MB default and inflight 256 stand — [the sweep](../dirigo-results/0.2.13-port/ple-sweep/) |
 | `spec_window` policy | recovered only half the retrieval loss (+1.3…4.8 % vs +3.6…7.5 %) — left off |
 | DFlash2 / DSpark drafters | **CUDA/HIP only**; the SYCL delta in 0.2.12 is 3 lines in `prefill.cpp` |
+| `conv-route-batch-after` 1 | wins 0.52 s over the first six single-shot requests of a burst, loses **1.88 s** on the conversation turn that follows it — §7 | 
 | `--spec 0` to remove drafting entirely | the engine refuses it on a native IQ pack: *"it needs `--native` SHARD1, `--spec T (T >= 2)` and `--prefill` CHUNK"* — so drafting cannot be excluded this way |
 
 ## 3. Where the remaining time is
@@ -49,7 +50,7 @@ fixed term.
 
 | # | idea | evidence it could pay | cost | first test |
 | --- | --- | --- | --- | --- |
-| 1 | ship `conv-route-batch-after` 1–2 | measured **−21 % median TTFT** (0.371 → 0.293 s); §6 prices what it saves at **+212 ms per request** while the cache is on, and at `batch_after 4` the first three fresh requests of a run still pay it | a flag + a probe | a chat-after-single-shot shape to price the flip-back |
+| 1 | ~~ship `conv-route-batch-after` 1–2~~ | **closed, keep 4.** §7: 1 buys 0.52 s across the first six single-shot requests and costs **1.88 s** on the next conversation turn (`C2` 2.465 s against 0.587) — break-even at ~21 single-shots per conversation re-open | — | done; the config key that would have set it was also dead (PR #16) |
 | 2 | engine-side per-request timer | §6 leaves **~165 ms** inside prefill that no configuration lever explains (PLE reads excluded, cache slots ~58 ms of it); naming it needs a phase timer in the request path | code, a day | timestamp slot setup / first-layer expert reach / KV alloc per request |
 | 3 | a one-shot mode that also drops the cache slots | §6: `--prompt-cache 0` is **58 ms cheaper per request** than the router's cache-off path at 75 tokens, and far more stable (324 ms against 382, spread 323–339 against 327–537). The setting is restart-class today | engine work to make it per-request | the same ladder with a 0-slot variant |
 | 4 | residency-biased router on SYCL | `route_prior.cu` is CUDA-only; here **12,288 of 24,576** experts are resident, so half of every token's experts cross PCIe. Upstream measured +15 % / +37 % on a 12 GB NVIDIA card | engine port, days | decode lanes, 5 interleaved pairs |
@@ -112,7 +113,45 @@ on, like stock) — client TTFT from the first content delta, and the engine's o
 Artifacts: [`0.2.13-port/intercept/`](../dirigo-results/0.2.13-port/intercept/) — both ladders, the three
 cause-sweep arms, `summary.json`, the probe and both drivers, and the logs with every restore line.
 
-## 7. Method rules these numbers were produced under
+## 7. Mixed traffic: why `batch_after` stays at 4
+
+One traffic shape, two card windows, the same build and model, differing only in the server's
+`--conv-route-batch-after` (4, the deployed value, against 1). Each window: a repeated ~3,000-token prompt, a
+two-turn conversation, six unique single-shot prompts, then the conversation's next turn and the repeat again. TTFT in
+seconds:
+
+| step | what it is | `batch_after 4` | `batch_after 1` |
+| --- | --- | --- | --- |
+| R1 | the 3k prompt, first time | 2.263 | 2.134 |
+| C1 | conversation, turn 1 | 2.212 | 1.973 |
+| **C2** | **conversation, turn 2 — should reuse** | **0.587** | **2.465** |
+| S1 | single-shot 1 | 0.564 | 0.517 |
+| S2 | single-shot 2 | 0.498 | 0.328 |
+| S3 | single-shot 3 | 0.503 | 0.325 |
+| S4 | single-shot 4 | 0.454 | 0.327 |
+| S5–S6 | single-shot 5–6 | 0.328 / 0.328 | 0.327 / 0.327 |
+| C3 | conversation, turn 3 | 0.549 | 0.544 |
+| R2 | the 3k prompt again | 2.330 | 2.316 |
+
+1. **`batch_after 1` wins 0.52 s across six single-shot requests** — 0.17 s, 0.18 s and 0.13 s on the second, third
+   and fourth, then nothing, because the cache is off either way by the fifth.
+2. **It loses 1.88 s on the conversation's second turn.** Served with the cache off, the first turn parks nothing, so
+   the second turn re-reads its whole context: 2.465 s against 0.587 s.
+3. **Break-even is ~21 single-shot requests per conversation re-open** (1.88 s ÷ 0.087 s saved per request). A one-shot
+   extraction queue clears that easily; anything that alternates a tool call with a chat turn never does.
+4. **The flip costs the request right after it, and nothing else** — `C3` reuses in both arms (0.549 / 0.544), and the
+   repeat `R2` re-reads in both (2.330 / 2.316), because another conversation's context displaced it either way.
+5. **The value was never actually settable.** Both configs produced identical results on all eleven steps until the flag
+   was passed by hand: `serve/server.py` read `--conv-route-batch-after` and ignored the config's
+   `conv_route_batch_after`, while the launcher writes the key and passes no flag. Fixed in
+   [PR #16](https://github.com/rwkeyes/Strata/pull/16) (unmerged — it must not touch `serve/` on this branch).
+
+Decision: **4 stands.** 1 is only right for a pure single-shot queue, and this fork is not sold as one.
+
+Artifacts: [`0.2.13-port/intercept/mixed/`](../dirigo-results/0.2.13-port/intercept/mixed/) — both arms, the two inert
+runs that exposed the dead key, the probe and the driver.
+
+## 8. Method rules these numbers were produced under
 
 - Paired or interleaved arms; median of repeats; the box's run-to-run spread stated next to the effect.
 - One prompt per configuration is not a measurement: every lane here has several requests, and a single-prompt

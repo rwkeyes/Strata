@@ -1,0 +1,94 @@
+{
+ "label": "a1s6",
+ "singles": 6,
+ "steps": [
+  {
+   "ttft": 2.1021,
+   "wall": 2.379,
+   "chars": 69,
+   "finish": "stop",
+   "text": "Rule 007 mandates that the required field alpha160 maps to column 31.",
+   "step": "R1"
+  },
+  {
+   "ttft": 1.9756,
+   "wall": 2.866,
+   "chars": 303,
+   "finish": "length",
+   "text": "Based on the handbook provided, here is a structured summary of the rules. The data has been organized by **Field Name**",
+   "step": "C1"
+  },
+  {
+   "ttft": 2.447,
+   "wall": 2.97,
+   "chars": 182,
+   "finish": "length",
+   "text": "Based on the handbook provided, there are **two** rules that map to column 42:\n\n1.  **RULE 067**: field `delta610` is op",
+   "step": "C2"
+  },
+  {
+   "ttft": 0.5071,
+   "wall": 1.042,
+   "chars": 161,
+   "finish": "length",
+   "text": "Based on the record provided, here is the extracted information:\n\n*   **Record ID:** R474354\n*   **Owner:** c\n*   **Amou",
+   "step": "S1"
+  },
+  {
+   "ttft": 0.3323,
+   "wall": 0.477,
+   "chars": 58,
+   "finish": "stop",
+   "text": "The status is not explicitly provided in the given record.",
+   "step": "S2"
+  },
+  {
+   "ttft": 0.3349,
+   "wall": 0.869,
+   "chars": 192,
+   "finish": "length",
+   "text": "Based on the record provided, there is **no explicit status field** listed.\n\nThe available data points are:\n*   **Record",
+   "step": "S3"
+  },
+  {
+   "ttft": 0.3361,
+   "wall": 0.47,
+   "chars": 58,
+   "finish": "stop",
+   "text": "The status is not explicitly provided in the given record.",
+   "step": "S4"
+  },
+  {
+   "ttft": 0.3265,
+   "wall": 0.467,
+   "chars": 47,
+   "finish": "stop",
+   "text": "The status is not provided in the given record.",
+   "step": "S5"
+  },
+  {
+   "ttft": 0.3294,
+   "wall": 0.492,
+   "chars": 58,
+   "finish": "stop",
+   "text": "The status is not explicitly provided in the given record.",
+   "step": "S6"
+  },
+  {
+   "ttft": 0.5565,
+   "wall": 1.086,
+   "chars": 149,
+   "finish": "stop",
+   "text": "Based on the handbook provided, there are **17** rules that mention a field starting with `gamma`. Here is the list:\n\n* ",
+   "step": "C3"
+  },
+  {
+   "ttft": 2.3375,
+   "wall": 2.553,
+   "chars": 69,
+   "finish": "stop",
+   "text": "Rule 007 mandates that the required field alpha160 maps to column 31.",
+   "step": "R2"
+  }
+ ]
+}
