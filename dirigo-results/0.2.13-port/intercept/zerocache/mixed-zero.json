@@ -1,0 +1,62 @@
+{
+ "label": "zero",
+ "singles": 2,
+ "steps": [
+  {
+   "ttft": 1.9927,
+   "wall": 2.207,
+   "chars": 69,
+   "finish": "stop",
+   "text": "Rule 007 mandates that the required field alpha160 maps to column 31.",
+   "step": "R1"
+  },
+  {
+   "ttft": 1.9645,
+   "wall": 2.831,
+   "chars": 303,
+   "finish": "length",
+   "text": "Based on the handbook provided, here is a structured summary of the rules. The data has been organized by **Field Name**",
+   "step": "C1"
+  },
+  {
+   "ttft": 2.4818,
+   "wall": 3.004,
+   "chars": 182,
+   "finish": "length",
+   "text": "Based on the handbook provided, there are **two** rules that map to column 42:\n\n1.  **RULE 067**: field `delta610` is op",
+   "step": "C2"
+  },
+  {
+   "ttft": 0.3898,
+   "wall": 0.922,
+   "chars": 161,
+   "finish": "length",
+   "text": "Based on the record provided, here is the extracted information:\n\n*   **Record ID:** R474354\n*   **Owner:** c\n*   **Amou",
+   "step": "S1"
+  },
+  {
+   "ttft": 0.3874,
+   "wall": 0.531,
+   "chars": 58,
+   "finish": "stop",
+   "text": "The status is not explicitly provided in the given record.",
+   "step": "S2"
+  },
+  {
+   "ttft": 2.3899,
+   "wall": 2.891,
+   "chars": 133,
+   "finish": "stop",
+   "text": "There are **18** rules in the handbook that mention a field starting with `gamma`. Here is the list:\n\n*   **RULE 011**: ",
+   "step": "C3"
+  },
+  {
+   "ttft": 2.1115,
+   "wall": 2.327,
+   "chars": 69,
+   "finish": "stop",
+   "text": "Rule 007 mandates that the required field alpha160 maps to column 31.",
+   "step": "R2"
+  }
+ ]
+}
