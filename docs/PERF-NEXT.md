@@ -36,6 +36,7 @@ important as the open one.
 | `--ple-row-cache` 4 M / 16 M rows, `--ple-inflight` 1024 | 4 M rows and inflight 1024 are **flat** (inside the 0.2–3.6 % drift band); 16 M rows (1.44 GB) costs **−8 % on fresh 4.2k, −8…−12 % on 8.8k, −17 % on a 4.4k follow-up, −10 % on 30k**. The 94 MB default and inflight 256 stand — [the sweep](../dirigo-results/0.2.13-port/ple-sweep/) |
 | `spec_window` policy | recovered only half the retrieval loss (+1.3…4.8 % vs +3.6…7.5 %) — left off |
 | DFlash2 / DSpark drafters | **CUDA/HIP only**; the SYCL delta in 0.2.12 is 3 lines in `prefill.cpp` |
+| `--spec 0` to remove drafting entirely | the engine refuses it on a native IQ pack: *"it needs `--native` SHARD1, `--spec T (T >= 2)` and `--prefill` CHUNK"* — so drafting cannot be excluded this way |
 
 ## 3. Where the remaining time is
 
@@ -48,13 +49,14 @@ fixed term.
 
 | # | idea | evidence it could pay | cost | first test |
 | --- | --- | --- | --- | --- |
-| 1 | ship `conv-route-batch-after` 1–2 | measured **−21 % median TTFT** (0.371 → 0.293 s), summed −29 %, steady state at request 2 instead of 5; the default is still 4 | a flag + a probe | a chat-after-single-shot shape to price the flip-back |
-| 2 | attribute the ~330 ms fixed per-request cost | nobody has split it on SYCL: slot init, expert warm-up for the first layers, KV allocation. The PLE read path is now excluded by measurement (§5) | an hour, no code | `bench_prefill` at 8/16/32/64/128/256 tokens |
-| 3 | residency-biased router on SYCL | `route_prior.cu` is CUDA-only; here **12,288 of 24,576** experts are resident, so half of every token's experts cross PCIe. Upstream measured +15 % / +37 % on a 12 GB NVIDIA card | engine port, days | decode lanes, 5 interleaved pairs |
-| 4 | prefill chunk at 4k/8k/12k with intervals | 16k/32k were tested, but 8,192 was never shown to be the knee | ~20 min | paired, three prompt sizes, per-prompt medians |
-| 5 | CPU pool workers and affinity on the 7700X | 15 workers is a 16-thread default; p-core pinning was **+27 %** decode on the 13700K | 15 min | workers 8/12/15/16, `--pool-affinity` on/off |
-| 6 | dispatch overhead on SYCL | the Vulkan analysis found ~88 % of per-dispatch cost is fixed; nobody has counted dispatches per token on SYCL | a day | `unitrace` kernel count per token, then fuse the five most frequent small ops |
-| 7 | DFlash2 block drafter on SYCL | upstream's headline decode lever; 7 drafts per pass | weeks | only after 1–3 |
+| 1 | ship `conv-route-batch-after` 1–2 | measured **−21 % median TTFT** (0.371 → 0.293 s); §6 prices what it saves at **+212 ms per request** while the cache is on, and at `batch_after 4` the first three fresh requests of a run still pay it | a flag + a probe | a chat-after-single-shot shape to price the flip-back |
+| 2 | engine-side per-request timer | §6 leaves **~165 ms** inside prefill that no configuration lever explains (PLE reads excluded, cache slots ~58 ms of it); naming it needs a phase timer in the request path | code, a day | timestamp slot setup / first-layer expert reach / KV alloc per request |
+| 3 | a one-shot mode that also drops the cache slots | §6: `--prompt-cache 0` is **58 ms cheaper per request** than the router's cache-off path at 75 tokens, and far more stable (324 ms against 382, spread 323–339 against 327–537). The setting is restart-class today | engine work to make it per-request | the same ladder with a 0-slot variant |
+| 4 | residency-biased router on SYCL | `route_prior.cu` is CUDA-only; here **12,288 of 24,576** experts are resident, so half of every token's experts cross PCIe. Upstream measured +15 % / +37 % on a 12 GB NVIDIA card | engine port, days | decode lanes, 5 interleaved pairs |
+| 5 | prefill chunk at 4k/8k/12k with intervals | 16k/32k were tested, but 8,192 was never shown to be the knee | ~20 min | paired, three prompt sizes, per-prompt medians |
+| 6 | CPU pool workers and affinity on the 7700X | 15 workers is a 16-thread default; p-core pinning was **+27 %** decode on the 13700K | 15 min | workers 8/12/15/16, `--pool-affinity` on/off |
+| 7 | dispatch overhead on SYCL | the Vulkan analysis found ~88 % of per-dispatch cost is fixed; nobody has counted dispatches per token on SYCL | a day | `unitrace` kernel count per token, then fuse the five most frequent small ops |
+| 8 | DFlash2 block drafter on SYCL | upstream's headline decode lever; 7 drafts per pass | weeks | only after 1–3 |
 
 ## 5. The PLE sweep, run 2026-11-14 — closed
 
@@ -81,7 +83,36 @@ reuse the KV cache instead of re-reading rows.
 Artifacts: [`0.2.13-port/ple-sweep/`](../dirigo-results/0.2.13-port/ple-sweep/) — the six configs, the per-leg JSON, the log with each
 window's restore line, `summary.json`, and the script.
 
-## 6. Method rules these numbers were produced under
+## 6. The fixed per-request cost, measured 2026-11-14
+
+A ladder of unique prompts (74 … 1,608 real tokens), two arms — the deployed `conv_route: on` and `shadow` (cache
+on, like stock) — client TTFT from the first content delta, and the engine's own `prompt … read in X ms` and
+`conversation cache: parked … in Y ms` lines for the split:
+
+| arm | TTFT fit | prefill fit (engine) | server (TTFT − prefill) | park |
+| --- | --- | --- | --- | --- |
+| `conv_route: on` (cache off for one-shot) | **243 ms + 0.77 ms/token** | **222 ms + 0.77 ms/token** | 21–32 ms | ~100 ms on the first 3 requests only, then none |
+| `shadow` (cache on, like stock) | **455 ms + 0.79 ms/token** | **434 ms + 0.79 ms/token** | 21–24 ms | ~101 ms on every request |
+
+1. **Nothing hides outside the engine's own accounting.** TTFT is prefill plus ~21 ms of server, in both modes; the
+   unaccounted term that earlier notes called "450–500 ms" is not overhead, it is prefill.
+2. **The cache-on state costs +212 ms per request** (intercept 434 against 222) — the prize the router takes. At
+   `batch_after 4` a run's first three fresh requests still pay it: 484 / 485 / 402 ms at 74 / 74 / 75 tokens against
+   290 ms once the cache is off.
+3. **Parking is ~101 ms and happens after the answer**, in both modes; it is not part of TTFT, and with the cache off
+   it stops entirely.
+4. **The cache slots cost something even when unused**: `--prompt-cache 0` measured 324 ms median at 75 tokens
+   (323–339) against 382 ms on the router's cache-off path (327–537), the same prompts and the same build, with a
+   repeated default arm reproducing 382 ms exactly.
+5. **The draft layer could not be switched off to test its share**: `--spec 0` is refused on a native IQ pack, which
+   needs `--spec T (T >= 2)`.
+6. **What is left is ~165 ms** inside prefill after the cache slots' ~58 ms, unexplained by any configuration lever
+   tried so far (PLE row reads are excluded by §5). Naming it needs a phase timer inside the request path.
+
+Artifacts: [`0.2.13-port/intercept/`](../dirigo-results/0.2.13-port/intercept/) — both ladders, the three
+cause-sweep arms, `summary.json`, the probe and both drivers, and the logs with every restore line.
+
+## 7. Method rules these numbers were produced under
 
 - Paired or interleaved arms; median of repeats; the box's run-to-run spread stated next to the effect.
 - One prompt per configuration is not a measurement: every lane here has several requests, and a single-prompt
