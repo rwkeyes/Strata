@@ -51,14 +51,15 @@ fixed term.
 
 | # | idea | evidence it could pay | cost | first test |
 | --- | --- | --- | --- | --- |
-| 1 | ~~ship `conv-route-batch-after` 1–2~~ | **closed, keep 4.** §7: 1 buys 0.52 s across the first six single-shot requests and costs **1.88 s** on the next conversation turn (`C2` 2.465 s against 0.587) — break-even at ~21 single-shots per conversation re-open | — | done; the config key that would have set it was also dead (PR #16) |
-| 2 | engine-side per-request timer | §6 leaves **~165 ms** inside prefill that no configuration lever explains (PLE reads excluded, cache slots ~58 ms of it); naming it needs a phase timer in the request path | code, a day | timestamp slot setup / first-layer expert reach / KV alloc per request |
-| 3 | ~~a one-shot mode that also drops the cache slots~~ | **closed, §8**: no saving over the router's cache-off path at matched sizes (+2 ms at 456 tokens, +8 ms at 1,608), and a 0-slot start severs conversation reuse for good — every turn re-prefilled | — | done |
-| 4 | residency-biased router on SYCL | `route_prior.cu` is CUDA-only; here **12,288 of 24,576** experts are resident, so half of every token's experts cross PCIe. Upstream measured +15 % / +37 % on a 12 GB NVIDIA card | engine port, days | decode lanes, 5 interleaved pairs |
-| 5 | prefill chunk at 4k/8k/12k with intervals | 16k/32k were tested, but 8,192 was never shown to be the knee | ~20 min | paired, three prompt sizes, per-prompt medians |
-| 6 | CPU pool workers and affinity on the 7700X | 15 workers is a 16-thread default; p-core pinning was **+27 %** decode on the 13700K | 15 min | workers 8/12/15/16, `--pool-affinity` on/off |
-| 7 | dispatch overhead on SYCL | the Vulkan analysis found ~88 % of per-dispatch cost is fixed; nobody has counted dispatches per token on SYCL | a day | `unitrace` kernel count per token, then fuse the five most frequent small ops |
-| 8 | DFlash2 block drafter on SYCL | upstream's headline decode lever; 7 drafts per pass | weeks | only after 1–3 |
+| 1 | **defer the slot refill past the first token** | §9: the refill runs between the prompt read and `prompt done` at **0.319 ms per lent slot** — 72 ms on a 127-token prompt, 188 ms on a 1.6 k one, on the TTFT path. Decode needs its own experts, not the slots being refilled | engine change, a few lines | the same ladder with the refill moved; watch for PCIe contention with decode |
+| 2 | ~~ship `conv-route-batch-after` 1–2~~ | **closed, keep 4.** §7: 1 buys 0.52 s across the first six single-shot requests and costs **1.88 s** on the next conversation turn (`C2` 2.465 s against 0.587) — break-even at ~21 single-shots per conversation re-open | — | done; the config key that would have set it was also dead (PR #16) |
+| 3 | ~~engine-side per-request timer~~ | **done, no build**: `STRATA_TRACE` already splits the prompt path — §9 names 109 ms of read-side fixed work, 72 ms of refill and 56 ms of bookkeeping | — | done |
+| 4 | ~~a one-shot mode that also drops the cache slots~~ | **closed, §8**: no saving over the router's cache-off path at matched sizes (+2 ms at 456 tokens, +8 ms at 1,608), and a 0-slot start severs conversation reuse for good — every turn re-prefilled | — | done |
+| 5 | residency-biased router on SYCL | `route_prior.cu` is CUDA-only; here **12,288 of 24,576** experts are resident, so half of every token's experts cross PCIe. Upstream measured +15 % / +37 % on a 12 GB NVIDIA card | engine port, days | decode lanes, 5 interleaved pairs |
+| 6 | prefill chunk at 4k/8k/12k with intervals | 16k/32k were tested, but 8,192 was never shown to be the knee | ~20 min | paired, three prompt sizes, per-prompt medians |
+| 7 | CPU pool workers and affinity on the 7700X | 15 workers is a 16-thread default; p-core pinning was **+27 %** decode on the 13700K | 15 min | workers 8/12/15/16, `--pool-affinity` on/off |
+| 8 | dispatch overhead on SYCL | the Vulkan analysis found ~88 % of per-dispatch cost is fixed; nobody has counted dispatches per token on SYCL | a day | `unitrace` kernel count per token, then fuse the five most frequent small ops |
+| 9 | DFlash2 block drafter on SYCL | upstream's headline decode lever; 7 drafts per pass | weeks | only after 1–3 |
 
 ## 5. The PLE sweep, run 2026-11-14 — closed
 
@@ -110,8 +111,8 @@ on, like stock) — client TTFT from the first content delta, and the engine's o
    profile is equal — 456 tokens: 539.7 against 537.3; 1,608 tokens: 1,471.3 against 1,463.3.
 5. **The draft layer could not be switched off to test its share**: `--spec 0` is refused on a native IQ pack, which
    needs `--spec T (T >= 2)`.
-6. **What is left is ~165 ms** inside prefill after the cache slots' ~58 ms, unexplained by any configuration lever
-   tried so far (PLE row reads are excluded by §5). Naming it needs a phase timer inside the request path.
+6. **The ~165 ms is now split, without a build** — the engine already prints a per-request trace under `STRATA_TRACE`:
+   ~109 ms of fixed work inside the prompt read, ~72 ms of expert-slot refill, ~56 ms of cache bookkeeping. See §9.
 
 Artifacts: [`0.2.13-port/intercept/`](../dirigo-results/0.2.13-port/intercept/) — both ladders, the three
 cause-sweep arms, `summary.json`, the probe and both drivers, and the logs with every restore line.
@@ -180,7 +181,55 @@ path, which means a build.
 Artifacts: [`0.2.13-port/intercept/zerocache/`](../dirigo-results/0.2.13-port/intercept/zerocache/) — both ladders, the
 mixed shape, the configs, the driver, and the window log with every restore line.
 
-## 9. Method rules these numbers were produced under
+## 9. Where the ~165 ms goes: the expert-slot refill
+
+`STRATA_TRACE=1` makes engine 0.1.59 print the prompt path per request — `prompt start`, `lent N slots`, `prompt chunk`,
+`read N tokens in X ms`, `refill start`, `refilled N slots in X ms`, `prompt done`. No build is needed to read it. (The
+per-request *admission* trace needs `--batch`, so with `--batch 0` it stays silent; the prompt path is what matters here.)
+
+Ladder with the deployed router, six samples per size, medians:
+
+| real tokens | read | refill | lent slots | refill per slot |
+| --- | --- | --- | --- | --- |
+| 127 | 252 ms | **71.7 ms** | 225 | 0.319 |
+| 457 | 432 ms | **82.6 ms** | 259 | 0.319 |
+| 1,609 | 1,245 ms | **188.2 ms** | 589 | 0.320 |
+
+1. **The refill is a fixed per-request cost on the TTFT path.** It runs *after* the prompt read and *before* `prompt
+   done`, so the first token waits for it: 72 ms on a short prompt, 188 ms on a 1.6 k one.
+2. **It is one PCIe transfer per lent expert slot at 0.319 ms/slot** — the same rate at all three sizes to within 0.3 %.
+   The prompt borrows expert slots while it reads; afterwards the engine refills them with the profile's hottest experts.
+3. **The read itself carries 109 ms of fixed work** (`109 ms + 0.706 ms/token` over the three sizes): first-layer expert
+   reach and chunk setup, plus ~56 ms of cache bookkeeping. 109 + 72 + 56 ≈ the 165 ms §6 could not name, leaving
+   nothing unexplained at this resolution.
+4. **This reconciles §6 with the dispatch.** Pinning the cache on (`conv_route: shadow`) raises TTFT by 148–234 ms but
+   raises `read + refill` by only 7–29 ms: the cache-on cost is checkpoint work inside the engine's prompt span, not in
+   the prompt read. Both measurements were right about different parts of the same 200 ms.
+
+**The lever this exposes:** the refill does not have to be synchronous with the answer. It reclaims slots the *next*
+request will lend again, and decode for the current request needs its own experts, not those slots. Moving it after the
+first token would take 72–188 ms off TTFT — the largest remaining cheap win, and it is an engine change of a few lines
+rather than a research project.
+
+Artifacts: [`0.2.13-port/intercept/trace/`](../dirigo-results/0.2.13-port/intercept/trace/) — both ladders, the engine
+logs with every trace line, the parser and the window driver.
+
+### Cross-weight check: blocked, three engine constraints
+
+The same trace was attempted on a second weight set (the Q2_0 pack, 34 GB, copied to NVMe from the cold disk for this)
+and could not start:
+
+| attempt | engine's answer |
+| --- | --- |
+| Q2_0 pack + `--ple-gguf` at the shared PLE shard | `native dense: duplicate split shard number` |
+| pack only, embedding from the GGUF, no `--native` | `is a native (IQ) pack: it needs --native SHARD1, --spec T (T >= 2) and --prefill CHUNK` |
+| fixed `--expert-cache 12288`, no profile | `REFUSED: 11158 experts are neither in VRAM nor mirrored` |
+
+The shipped `expert-profile-mine.bin` is 48×256 and the Q2_0 pack declares 48×512, so the second weight set needs its
+own calibration run before it can serve. Until then every number in this inventory stands on one weight set (IQ1_M),
+which is stated in §10 and is the honest bound on all of it.
+
+## 10. Method rules these numbers were produced under
 
 - Paired or interleaved arms; median of repeats; the box's run-to-run spread stated next to the effect.
 - One prompt per configuration is not a measurement: every lane here has several requests, and a single-prompt
