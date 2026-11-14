@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from serve.conv_router import BATCH, CHAT, Router  # noqa: E402
+from serve.conv_router import BATCH, CHAT, Router, resolve_batch_after  # noqa: E402
 
 
 def one(text="Summarise this document."):
@@ -104,6 +104,17 @@ def test_report_counts_every_request():
     rep = r.report()
     assert rep["requests"] == 3 and rep["switches_off"] == 1 and rep["switches_on"] == 1
     assert rep["chat"] + rep["batch"] == 3
+
+
+def test_the_config_key_is_honoured_when_the_flag_is_absent():
+    """The launcher writes conv_route_batch_after into the config and passes no flag, so the config must win over 4."""
+    assert resolve_batch_after(None, {"conv_route_batch_after": 2}) == 2
+    assert resolve_batch_after(None, {"conv_route_batch_after": "3"}) == 3
+    assert resolve_batch_after(1, {"conv_route_batch_after": 2}) == 1, "an explicit flag wins over the config"
+    assert resolve_batch_after(None, {}) == 4, "no flag and no key keeps the old default"
+    assert resolve_batch_after(None, None) == 4
+    for bad in (0, -1, True, "off", [1], {}):
+        assert resolve_batch_after(None, {"conv_route_batch_after": bad}) == 4, f"malformed {bad!r} must not crash"
 
 
 def test_the_prefix_history_is_bounded():

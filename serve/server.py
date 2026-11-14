@@ -65,6 +65,7 @@ from serve.frontend import (THINK_END, ChatTemplate, Event, OutputParser, anthro
                             tool_choice_of, unmark_think_literals)
 from serve.mcp import McpCancelled, hub_from_config  # noqa: E402
 from serve import conv_router as conv_route_mod  # noqa: E402
+from serve.conv_router import resolve_batch_after  # noqa: E402
 from serve import runconfig  # noqa: E402
 from serve.webfiles import subtree_file as web_subtree_file  # noqa: E402
 from strata_control import engine_component  # noqa: E402
@@ -10386,8 +10387,9 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
                     help="switch the engine's prompt/conversation cache per traffic shape: single-shot batches off "
                          "(prefill +33 %%), chat/agent on (a repeated context reuses, 5.3 s -> 0.3 s). 'shadow' only "
                          "logs what it would do (serve/conv_router.py)")
-    ap.add_argument("--conv-route-batch-after", type=int, default=4,
-                    help="consecutive single-shot requests before the cache is switched off (default 4)")
+    ap.add_argument("--conv-route-batch-after", type=int, default=None,
+                    help="consecutive single-shot requests before the cache is switched off (default: the config's "
+                         "conv_route_batch_after, else 4)")
     ap.add_argument("--thinking-policy", choices=["off", "shadow", "on"], default=None,
                     help="do not pay for a thinking block on a request that asks for a short direct answer "
                          "(extraction, formatting, translation, a one-word reply; serve/prompt_kind.py "
@@ -10731,7 +10733,7 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
             _pc = 6
     _cr = cfg.get("conv_route")
     svc.set_conv_route(a.conv_route or (_cr if isinstance(_cr, str) else "") or "off",
-                       cache_on=_pc, batch_after=a.conv_route_batch_after)
+                       cache_on=_pc, batch_after=resolve_batch_after(a.conv_route_batch_after, cfg))
     if (cfg.get("arch") or "") == "deepseek41" and vision is None and a.engine == "strata":
         # DeepSeek-V4.1 reads pictures with the engine's own tower (--vision on, the default): no separate reader process.
         # `--vision off` in the config's args, or a pack without a tower, leaves svc.vision None: pictures are refused with the 400 as before.
