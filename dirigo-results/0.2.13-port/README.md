@@ -55,6 +55,10 @@ pack, same `args`, `conv_route: "on"`, `thinking_policy: "on"`, and the two `dat
 byte-identical (`sha256 7bd9a9c35d65b68b…`). The stock server ignores the fork's lever keys rather than erroring on
 them. Full details in `provenance.json`.
 
+One key neither measured binary read: `conv_route_batch_after` was honoured only from the command-line flag until
+`b906f0b5` (found 2026-11-14, after this run), so both arms here served at the default 4 — symmetric, and it does not
+move the comparison, but a config-only change to that value would not have shown up in either arm.
+
 ## 1. Unit suites
 
 | | dirigo | stock |

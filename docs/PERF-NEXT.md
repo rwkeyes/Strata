@@ -146,10 +146,13 @@ seconds:
    extraction queue clears that easily; anything that alternates a tool call with a chat turn never does.
 4. **The flip costs the request right after it, and nothing else** — `C3` reuses in both arms (0.549 / 0.544), and the
    repeat `R2` re-reads in both (2.330 / 2.316), because another conversation's context displaced it either way.
-5. **The value was never actually settable.** Both configs produced identical results on all eleven steps until the flag
-   was passed by hand: `serve/server.py` read `--conv-route-batch-after` and ignored the config's
-   `conv_route_batch_after`, while the launcher writes the key and passes no flag. Fixed in
-   [PR #16](https://github.com/rwkeyes/Strata/pull/16) (unmerged — it must not touch `serve/` on this branch).
+5. **The value was never actually settable, until it was fixed.** Both configs produced identical results on all
+   eleven steps until the flag was passed by hand: `serve/server.py` read `--conv-route-batch-after` and ignored the
+   config's `conv_route_batch_after`, while the launcher writes the key and passes no flag — so every deployment ran 4
+   whatever the config said. **Fixed and merged**: `b906f0b5`
+   ([PR #16](https://github.com/rwkeyes/Strata/pull/16)), three files under `serve/`, resolution order flag → config → 4,
+   with a test that pins all four cases. It is behaviour-neutral for the deployment (its config says 4, and 4 is what it
+   resolves to) and it is the only code change on this branch after the snapshot — `DIRIGO.md` records that.
 
 Decision: **4 stands.** 1 is only right for a pure single-shot queue, and this fork is not sold as one.
 

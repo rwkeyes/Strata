@@ -139,7 +139,9 @@ ninja -C build-sycl-aot -j10 strata
 
 The server's own levers are read from the run config (`thinking_policy`, `conv_route`, `conv_route_batch_after`,
 `spec_window`, `spec_window_needle_min`, `short_answer`, `code_tune`) or the matching flags; `GET /v1/tuning` reports
-every one of them plus the tuner, and `POST /v1/tune` retunes the running engine.
+every one of them plus the tuner, and `POST /v1/tune` retunes the running engine. One qualification, because it bit a
+measurement: `conv_route_batch_after` was ignored from the config until `b906f0b5` — before that only the flag worked,
+so a config edit looked applied and was not.
 
 ## Upstream
 
