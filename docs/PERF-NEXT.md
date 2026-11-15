@@ -212,22 +212,43 @@ first token would take 72–188 ms off TTFT — the largest remaining cheap win,
 rather than a research project.
 
 Artifacts: [`0.2.13-port/intercept/trace/`](../dirigo-results/0.2.13-port/intercept/trace/) — both ladders, the engine
-logs with every trace line, the parser and the window driver.
+logs with every trace line, the parser and the window driver, and [`trace/q2_0/`](../dirigo-results/0.2.13-port/intercept/trace/q2_0/)
+for the second weight set: its ladder, its config, its engine log, and both calibration attempts.
 
-### Cross-weight check: blocked, three engine constraints
+### Cross-weight check: it ran, and the fix was the profile
 
-The same trace was attempted on a second weight set (the Q2_0 pack, 34 GB, copied to NVMe from the cold disk for this)
-and could not start:
+The first three attempts failed, and the last failure named the real problem: the config pointed `--expert-profile` at
+`data/expert-profile-mine.bin`, which is **48×256** — the profile of the *pruned* coder model (GSQ-RCO Coder keeps 256 of
+512 experts). The Q2_0 pack declares 48×512, and the tree already ships `data/expert-profile.bin` at 48×512. Pointed at
+that, Q2_0 served without any calibration:
 
-| attempt | engine's answer |
+| real tokens | Q2_0 read | Q2_0 refill | lent slots | refill per slot | IQ1_M read | IQ1_M refill |
+| --- | --- | --- | --- | --- | --- | --- |
+| 128 | 1,075 ms | 75.2 ms | 313 | 0.240 | 252 ms | 71.7 ms |
+| 458 | 1,556 ms | 81.6 ms | 365 | 0.224 | 432 ms | 82.6 ms |
+| 1,610 | 2,055 ms | 160.9 ms | 726 | 0.222 | 1,245 ms | 188.2 ms |
+
+1. **The mechanism reproduces on different weights.** The refill is there, sits between `read` and `prompt done`, and
+   scales with lent slots: 0.22–0.26 ms/slot on Q2_0 against 0.319 on IQ1_M — a different rate, as different expert
+   payloads should give, but the same phase and the same ordering.
+2. **The absolute numbers are not comparable, and are not used above.** Q2_0 is the **unpruned 512-expert** model: its
+   `--expert-cache auto` found 19,208 of 24,576 slots (24.73 GiB) and mirrored the other 6,761 experts in 8.70 GiB of
+   pinned host memory, so ~27 % of experts cross PCIe; IQ1_M is the pruned 256-expert variant. Q2_0's dense shard also
+   sits on the cold disk (there was no room for 37.6 GB on this NVMe), which inflates its read further.
+3. **So §9's four findings stand on two weight sets for the mechanism, and on one for the magnitudes.** The ladder in
+   §9 remains the IQ1_M one; nothing above claims Q2_0 is slower or faster than it.
+
+**Calibrating Q2_0 by its own traces is blocked, three ways** (all logs shipped):
+
+| attempt | result |
 | --- | --- |
-| Q2_0 pack + `--ple-gguf` at the shared PLE shard | `native dense: duplicate split shard number` |
-| pack only, embedding from the GGUF, no `--native` | `is a native (IQ) pack: it needs --native SHARD1, --spec T (T >= 2) and --prefill CHUNK` |
-| fixed `--expert-cache 12288`, no profile | `REFUSED: 11158 experts are neither in VRAM nor mirrored` |
+| serve + `--dump-routing` | 0-byte file after 13 prompts — the SYCL device path does not write it |
+| serve + `STRATA_USAGE_DUMP` | no file after 12 prompts |
+| `tools/collect_profile_traces.py --mode usage` | `--spec needs the device residency table (--expert-profile, --expert-cache and the token graph)`; where it did prefill, 37 tokens took **80.3 s** at 0.5 tok/s (5,364 experts streamed, 77.4 s of it on the host) |
 
-The shipped `expert-profile-mine.bin` is 48×256 and the Q2_0 pack declares 48×512, so the second weight set needs its
-own calibration run before it can serve. Until then every number in this inventory stands on one weight set (IQ1_M),
-which is stated in §10 and is the honest bound on all of it.
+A Q2_0-specific profile therefore needs the serve-mode usage dump to flush (an engine fix) or the one-shot collector to
+work on a native pack — not another parameter. Until then Q2_0 runs on the shipped full profile, which is enough for a
+mechanism check but not for a ranking study.
 
 ## 10. Method rules these numbers were produced under
 
