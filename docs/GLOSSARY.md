@@ -155,8 +155,10 @@ A channel for changing engine settings on a running engine, between requests, wi
 channel.
 
 **conv route / conversation-cache routing (this fork)**
-A server-side rule that turns the prompt cache off during a run of one-shot prompts (faster prefill) and back
-on for a conversation (prefix reuse). Modes: `off`, `shadow` (classify and log only), `on`.
+A server-side rule that turns the prompt cache off after **four** single-shot prompts in a row (faster prefill) and
+back on at the next conversational turn (prefix reuse). Modes: `off`, `shadow` (classify and log only), `on`.
+The four is measured, not arbitrary: at a run length of one, the conversation that follows re-reads its whole context
+(**+1.9 s**), while the one-shot side saves only 0.17 s per request — break-even is ~21 requests per conversation.
 
 **Carry**
 This fork's delta on top of an upstream tag: 35 files, +5,024/−264 for v0.2.12. Kept as one patch in

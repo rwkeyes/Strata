@@ -164,7 +164,10 @@ python tools/iq_pack.py \
 ```
 
 Then serve. These are the settings the measured service ran with — replace the paths, and keep
-`data/expert-profile*.bin` where the binary can find it:
+`data/expert-profile*.bin` where the binary can find it. The profile is matched to the model's **expert count**, not its
+quantization: the full model (IQ2/IQ3/Q2 packs, 48×512) takes `data/expert-profile.bin`; the pruned *Coder* model
+(48×256) takes `data/expert-profile-coder.bin`. The wrong one is refused at start with
+`it is a profile for a different model`:
 
 ```sh
 ./build-sycl-aot/strata --serve \
@@ -244,7 +247,7 @@ with none of them enabled the server behaves as stock.
 
 | Change | What it does |
 | --- | --- |
-| conversation-cache routing | turns the prompt cache off for runs of single-shot prompts, back on for a conversation |
+| conversation-cache routing | turns the prompt cache off after **four** single-shot prompts in a row; one conversational turn switches it back on. Worth −12…−22 % first-token time at 1–4 clients and nothing at 8, and nothing on a conversation — and a threshold of 1 costs 1.9 s per conversation ([why](docs/PERF-NEXT.md#7-mixed-traffic-why-batch_after-stays-at-4)) |
 | thinking policy | skips the scratchpad for short, factual asks; keeps it when the answer needs work |
 | retune between requests | change engine settings on a live server — no restart, no reload |
 | per-request draft depth | a client can set its own speculation depth for one request |
