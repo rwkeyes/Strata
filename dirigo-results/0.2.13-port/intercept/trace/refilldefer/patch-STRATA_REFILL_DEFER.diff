@@ -1,0 +1,14 @@
+--- a/sycl/src/program/generate.cpp
++++ b/sycl/src/program/generate.cpp
+@@ -11264,7 +11264,13 @@ (in the serve prompt path, after the read loop)
+             }
+-            if (!refill(err)) {
++            // STRATA_REFILL_DEFER=1: keep the slots the prompt lent instead of handing them back before the first
++            // token. The refill is one PCIe copy per lent slot (0.319 ms/slot: 72 ms at 127 tokens, 188 ms at 1.6 k)
++            // and it runs inside prompt_ms, so the first token waits for it - while the decode that follows needs
++            // exactly the experts the prompt just put there. OFF by default.
++            static const bool refill_defer = std::getenv("STRATA_REFILL_DEFER") != nullptr;
++            if (!refill_defer && !refill(err)) {
+                 std::printf("ERR refilling a lent slot failed: %s\n", err.c_str());
+                 return 1;
+             }
