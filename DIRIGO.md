@@ -6,8 +6,16 @@ that served `:8095` on vega on 2026-11-08 — with every measurement kept under
 [`dirigo-results/`](#what-is-in-dirigo-results).
 
 The snapshot is `9fd4e15d` (5,837 tracked files); the tree hash below belongs to it. Commits after it on this branch
-change documentation only and leave `src/`, `include/`, `sycl/`, `metal/`, `serve/`, `setup.py` and `CMakeLists.txt`
-byte-identical, so a re-clone of the tag plus the carry still reproduces the deployed tree.
+are documentation, with **one** exception: `b906f0b5` (PR #16) changes three files under `serve/` —
+`conv_router.py`, `server.py` and its test — so that `conv_route_batch_after` is honoured from the run config and not
+only from the command-line flag. Every other path in `src/`, `include/`, `sycl/`, `metal/`, `setup.py` and
+`CMakeLists.txt` is still byte-identical to the snapshot.
+
+That patch is behaviour-neutral for the deployment: the launcher sets `CONV_ROUTE_BATCH_AFTER=4`, and 4 is what the
+resolver returns for it, so the tree that served `:8095` and this branch behave the same. Reproducing the branch tip
+therefore takes the tag, the carry **and** that one patch:
+
+    git diff 9fd4e15d..HEAD -- serve/        # the whole difference, 38 lines added, 4 removed
 
 Nothing here is aspirational: each number below was produced on 2026-11-07/08 on one Intel Arc Pro B70 (32 GB), with the
 model and configuration named in the same document that carries the result.
