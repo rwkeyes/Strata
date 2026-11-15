@@ -24,6 +24,27 @@ from dataclasses import dataclass, field
 CHAT = "chat"        # cache on
 BATCH = "batch"      # cache off
 
+DEFAULT_BATCH_AFTER = 4
+
+
+def resolve_batch_after(cli, cfg):
+    """The run length the router uses: the CLI flag wins, then the config's key, then 4.
+
+    The launcher writes `conv_route_batch_after` into the run config and starts the server without the flag
+    (`strata-b70-serve.sh`), so a server that only read the flag ran 4 for every deployment - measured 2026-11-14:
+    a config of 1 and the default produced byte-identical mixed-traffic results until the flag was passed by hand.
+    """
+    for v in (cli, (cfg or {}).get("conv_route_batch_after") if isinstance(cfg, dict) else None):
+        if v is None or isinstance(v, bool):
+            continue
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if n >= 1:
+            return n
+    return DEFAULT_BATCH_AFTER
+
 
 @dataclass
 class Decision:
