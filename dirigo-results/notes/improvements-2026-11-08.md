@@ -160,6 +160,10 @@ is indistinguishable from 0.2.11. That is the strongest evidence yet for the lev
 1. **`conv_route`'s threshold** (`conv_route_batch_after`, 4): the sweep above shows the router firing on every run,
    so 2 vs 4 vs 6 is the natural next measurement — a config key, one restart per arm. And a *conversational* sweep
    (repeated multi-turn prompts) to confirm the switch-back does not cost the reuse case under load.
+   **Closed 2026-11-14** (this note is kept as the record of 11-08): the conversational sweep ran at 1 against 4 —
+   1 saves 0.52 s across six one-shot requests and costs a conversation **1.88 s** per re-open, so 4 stands
+   ([`docs/PERF-NEXT.md`](../../docs/PERF-NEXT.md) §7). Sweeping it also showed the key was inert: the server read only
+   the flag, so "a config key, one restart per arm" would have measured nothing. Fixed in `b906f0b5`.
 2. **thinking off for small-budget code asks** — still the open quality item; harder tasks did not rescue thinking
    (9/10 vs 10/10, and 10x the wall time).
 3. Nothing else from today's list: `pcie_frac`, `spec_min_p 0.7`, deeper suffix windows all measured worse or noise.
