@@ -80,7 +80,13 @@ The difference is **this fork's conversation-cache routing, not the upstream tag
 
 Raw results: [`dirigo-results/guidellm/`](dirigo-results/guidellm/). Limits are in the write-up: one card, one slot, one
 quantization, a single-shot workload — it measures the "run of single-shot prompts" side of the router, not the switch
-back on a conversational turn, and the `--conv-route-batch-after` threshold was not swept.
+back on a conversational turn.
+
+Both gaps were closed on 2026-11-14 — see [`docs/PERF-NEXT.md`](docs/PERF-NEXT.md) §7. The switch back costs a
+conversation **1.9 s** per re-open, so `conv_route_batch_after` stays at 4: a run of one still saves 0.52 s across six
+one-shot requests and loses 1.88 s on the next conversation turn. Sweeping that threshold is what found the second
+thing: the server read the flag but ignored the `conv_route_batch_after` key in the config, so every deployment ran 4
+whatever the config said. Fixed in `b906f0b5` (PR #16).
 
 ## What else was measured, and what was rejected
 

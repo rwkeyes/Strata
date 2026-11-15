@@ -159,6 +159,11 @@ python tools/iq_pack.py \
 The pack is finished only when it contains `native_experts.txt`; a pack without it will not load. Keep the pack,
 the tokenizer folder and the GGUF shards together.
 
+Pick the expert profile by the model's **expert count**, which is in the pack's `index.txt`, not by its quantization:
+`data/expert-profile.bin` for the full 48×512 model (IQ2_*/IQ3_*/Q2_0), `data/expert-profile-coder.bin` for the pruned
+48×256 Coder. Getting this wrong stops the engine with `it is a profile for a different model` — a one-line fix, but it
+reads like a corrupted pack.
+
 ### B4. Serve the engine
 
 ```sh
