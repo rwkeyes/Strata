@@ -1,8 +1,36 @@
-# Dirigo Strata 0.2.12 — the verified tree, and what was measured
+# Dirigo Strata — the verified tree, and what was measured
 
-This branch is the **one place** for the Strata tree Dirigo Agents runs and the evidence behind it. It is one
-snapshot commit — upstream Strata **v0.2.12** (`146df3c46`, engine **0.1.58**) plus this fork's carry, in the state
-that served `:8095` on vega on 2026-11-08 — with every measurement kept under
+This branch is the **one place** for the Strata tree Dirigo Agents runs and the evidence behind it.
+
+**The current snapshot is 0.2.15** — upstream Strata **v0.2.15** (`c7757280`, engine **0.1.61**) plus this fork's
+carry, built and verified on 2026-11-16; its report, raw JSON, chart and scripts are in
+[`dirigo-results/0.2.15/`](dirigo-results/0.2.15/) and the facts are [below](#the-current-snapshot-0215-2026-11-16).
+The 0.2.12 snapshot that served `:8095` until this release, and the measurements taken on it, are kept further down
+as history.
+
+## The current snapshot: 0.2.15 (2026-11-16)
+
+| | |
+| --- | --- |
+| Base | upstream tag **v0.2.15**, commit `c77572806` |
+| Engine | **0.1.61** (upstream 0.2.15 bumps the version; its engine diff is three CPU *test* files, no kernel or host change — so 0.2.14's engine figures reproduce here) |
+| Carry | **37 files, +5,030 / −63** against the tag — the complete delta, kept as [`dirigo-results/notes/carry-0215.patch`](dirigo-results/notes/carry-0215.patch) |
+| Replayed by | `scripts/strata-carry-merge.py` (a per-path three-way merge): 37 paths, **0 conflicts** — only `CMakeLists.txt` and `serve/server.py` needed a real merge, one upstream line replaced |
+| Model | Qwen3.8-Flash-Next GSQ-RCO (Coder) **IQ1_M**, pack `coder-iq1_m`, 131,072-token context |
+| Build | SYCL AOT `bmg-g31`, Intel oneAPI 2026.2, cold build 20 min at `-j8`, engine 110 MB, `--help` rc=0 |
+
+| check | result | evidence |
+| --- | --- | --- |
+| Server suite, this fork | **1,567 tests, 616 s, 23 skipped, 0 failures** | [`dirigo-results/0.2.15/suites/`](dirigo-results/0.2.15/suites/) |
+| Server suite, stock v0.2.15 | 1,542 tests, 615 s, 23 skipped, 0 failures — stock is green here too now (our #5602 landed upstream) | same |
+| Kernel-parity battery (`ctest`, 85 tests) | **85/85 this fork**, 83/85 stock (`ple_parity`, `qsa_prompt_attn_parity` are the upstream gaps the carry closes) | same |
+| Behaviour probes | minefield 5/5 both; card gate PASS both; the 24-token extraction answered `2024-06-09` with 0 reasoning chars where stock returns an empty string; `/v1/tuning` + `/v1/tune` 200 vs 404 | same |
+| Speed against stock v0.2.15 | engine parity (largest of seven legs **1.1 %**); first token **11–21 % sooner** at 1–4 streams; control `shadow` 961 ms vs `on` 737 ms on one build | [`dirigo-results/0.2.15/`](dirigo-results/0.2.15/) |
+
+## The 0.2.12 snapshot — history
+
+The rest of this page describes the snapshot that served `:8095` on vega from 2026-11-08: upstream Strata
+**v0.2.12** (`146df3c46`, engine **0.1.58**) plus this fork's carry, with every measurement kept under
 [`dirigo-results/`](#what-is-in-dirigo-results).
 
 The snapshot is `9fd4e15d` (5,837 tracked files); the tree hash below belongs to it. Commits after it on this branch
@@ -118,6 +146,8 @@ Full write-up: [`dirigo-results/notes/improvements-2026-11-08.md`](dirigo-result
 | `standard-benchmark/` | the standard-protocol result folder: `README.md`, `results.json`, `outputs.jsonl`, `config.json`, template and corpus provenance, plus the operator's hardware correction |
 | `community-report/` | the three-build comparison (0.2.11 / 0.2.12 / stock 0.2.12): README, per-request JSON, the two probe scripts |
 | `guidellm/` | GuideLLM 0.8.1 results: 0.2.11, 0.2.12, 0.2.12-with-shadow, and the summaries |
+| `0.2.15/` | **the current snapshot**: fork vs stock v0.2.15 — report, chart, raw GuideLLM JSON, the two control positions, the engine battery, the suite/ctest evidence and the scripts |
+| `notes/carry-0215.patch` | the complete delta against tag v0.2.15 — 37 files, +5,030/−63 |
 | `0.2.13-port/` | fork vs **stock v0.2.13**: same battery both sides, GuideLLM side by side, the chart, the raw JSON, and the correction log from re-deriving every number |
 | `payload-0.2.11/` | the previous engine payload's record (MANIFEST, ARCHS, release notes, GuideLLM results, selftest) migrated from the old payload repo; the binaries themselves live with the payload, not in git |
 
@@ -157,5 +187,6 @@ branches on this fork:
 | `bench/arc-pro-b70-standard-1` | #5556 — the standard-protocol pilot on this card (ready) |
 | `tests/hip-ordinal-host-independent` | #5602 — `test_hip_ordinal` without the host's AMD topology (ready) |
 | `port/0.2.13` | the 0.2.12 carry replayed onto **v0.2.13**, built and measured against stock v0.2.13 — report in [`dirigo-results/0.2.13-port/`](dirigo-results/0.2.13-port/) |
+| `dirigo/0.2.15-verified` | the current snapshot: the carry replayed onto **v0.2.15** (37 paths, 0 conflicts), built and measured against stock v0.2.15 — report in [`dirigo-results/0.2.15/`](dirigo-results/0.2.15/) |
 
 `main` on this fork stays a mirror of upstream; this branch is where Dirigo's verified state lives.

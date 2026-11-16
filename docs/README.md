@@ -4,7 +4,7 @@
 answer, on either the released install or this repository's source snapshot. Every word Strata uses is in the
 [glossary](GLOSSARY.md).
 
-These guides describe the tree in this repository: upstream Strata **v0.2.12** (engine **0.1.58**) plus this
+These guides describe the tree in this repository: upstream Strata **v0.2.15** (engine **0.1.61**) plus this
 fork's changes. For the fork's verified build, what was measured, and the evidence, read
 [DIRIGO.md](../DIRIGO.md).
 
@@ -25,8 +25,9 @@ fork's changes. For the fork's verified build, what was measured, and the eviden
 | --- | --- |
 | Install or update | [Desktop app and Terminal](INSTALL.md) |
 | Choose a model and check memory | [Models and quantizations](MODELS.md) |
-| Run DeepSeek V4.1-Flash (app and Terminal) | [DeepSeek V4.1-Flash](MODELS.md#deepseek-v41-flash) |
+| Run DeepSeek V4.1-Flash (app and Terminal) | [DeepSeek V4.1-Flash](DEEPSEEK41.md) |
 | Run Qwen3.6-35B-A3B | [Qwen3.6-35B-A3B](QWEN36.md) |
+| See which model runs on which hardware | [Model and hardware table](CAPABILITIES.md) |
 | Start from the command line | [Terminal launch](TERMINAL_LAUNCH.md) |
 | Connect a coding tool | [Tool connections](TERMINAL_LAUNCH.md#connect-your-apps-strata-connect) |
 | Fix an install or startup problem | [Troubleshooting](TROUBLESHOOTING.md) |

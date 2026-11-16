@@ -1,0 +1,3 @@
+release tree (<data>/strata-0.2.15, release/0.2.15)
+Ran 1567 tests in 616.102s
+OK (skipped=23)

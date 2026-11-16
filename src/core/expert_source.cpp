@@ -4,7 +4,9 @@
 #include "strata/core/conversation_memory.hpp"
 #include "strata/core/foresight_swap.hpp"
 #include "strata/core/on_device.hpp"
+#include "strata/core/page_cache_drop.hpp"
 #include "strata/core/ple_residency.hpp"
+#include "strata/core/resident_ram_copy.hpp"
 #include "strata/platform/aux_cpus.hpp"
 #include "strata/core/remote_experts.hpp"
 #include "strata/core/peer_experts.hpp"
@@ -38,6 +40,7 @@
 #include <deque>
 #include <fstream>
 #include <filesystem>
+#include <iterator>
 #include <sstream>
 #include <limits>
 #include <map>
@@ -416,14 +419,17 @@ bool host_available_memory(HostMemory& m, const std::string& meminfo, const std:
     std::ifstream info(meminfo);
     std::string line;
     uint64_t bytes = 0;
+    std::optional<uint64_t> mem_total;   // a limit below it is a container's (its /proc/meminfo is the host's)
     while (std::getline(info, line)) {
         std::istringstream fields(line);
         std::string key, unit;
         uint64_t value = 0;
         if (fields >> key >> value >> unit && key == "MemAvailable:" && unit == "kB" &&
             value <= std::numeric_limits<uint64_t>::max() / 1024) bytes = value * 1024;
+        else if (key == "MemTotal:" && unit == "kB" && value <= std::numeric_limits<uint64_t>::max() / 1024) mem_total = value * 1024;
     }
     if (bytes == 0) return false;
+    const bool inactive_only = strata::core::mem_credit_inactive_only(std::getenv("STRATA_MEM_CREDIT_INACTIVE"));
     // Account for the tightest cgroup ancestor limit when its normal mount is visible.
     // This is a point-in-time guard, not a reservation against concurrent allocations.
     std::ifstream groups(self_cgroup);
@@ -461,6 +467,13 @@ bool host_available_memory(HostMemory& m, const std::string& meminfo, const std:
                     if (!read_cgroup_memory_stat(path, current, stat)) return false;
                     uint64_t cgroup_available = 0;
                     if (!cgroup_available_bytes(cap, stat, cgroup_available)) return false;
+                    // a container's limit: the memory guard's file-list credit (no shmem, no locked pages), this margin kept
+                    std::ifstream stat_file(path / "memory.stat");
+                    std::ostringstream stat_text;
+                    if (stat_file) stat_text << stat_file.rdbuf();
+                    const strata::core::ArenaCgroupRoom room =
+                        strata::core::arena_cgroup_room(cap, current, stat_text.str(), mem_total, inactive_only);
+                    if (room.applies) cgroup_available = room.room;
                     bytes = std::min(bytes, cgroup_available);
                     m.cgroup_limit = std::min(m.cgroup_limit, cap);
                 } catch (...) { return false; }
@@ -2635,6 +2648,43 @@ bool FileExpertSource::drop_mapping(std::string& why) {
 #endif
 }
 
+uint64_t FileExpertSource::drop_cached_pages(const std::function<bool(int64_t, int64_t)>& keep) {
+#if defined(__linux__)
+    if (unmapped_) return 0;
+    const uint64_t page = (uint64_t) sysconf(_SC_PAGESIZE);
+    uint64_t released = 0;
+    // the whole pages of [p, p + n): a page that also holds a neighbouring blob stays (that neighbour may be kept)
+    auto drop = [&](const uint8_t* p, uint64_t n, int fd, uint64_t off) {
+        const uint64_t a = ((uint64_t) (uintptr_t) p + page - 1) & ~(page - 1);
+        const uint64_t b = ((uint64_t) (uintptr_t) p + n) & ~(page - 1);
+        if (p == nullptr || b <= a) return;
+        if (madvise((void*) (uintptr_t) a, (size_t) (b - a), MADV_DONTNEED) != 0) return;
+        if (fd >= 0) (void) posix_fadvise(fd, (off_t) (off + (a - (uint64_t) (uintptr_t) p)), (off_t) (b - a), POSIX_FADV_DONTNEED);
+        released += b - a;
+    };
+    for (int64_t l = 0; l < n_layers_; ++l)
+        for (int64_t e = 0; e < n_expert_; ++e) {
+            if (keep && keep(l, e)) continue;
+            if (!role_ptr_.empty()) {
+                for (int r = 0; r < 3; ++r) {
+                    const size_t i = (size_t) (3 * l + r);
+                    const uint64_t per = role_bytes_[i];
+                    const uint8_t* p = role_ptr_[i] + (size_t) ((uint64_t) e * per);
+                    const size_t f = (size_t) role_file_[i];
+                    if (f >= maps_.size() || maps_[f].closed) continue;
+                    drop(p, per, maps_[f].fd, (uint64_t) (p - maps_[f].base));
+                }
+            } else if (const uint8_t* b = mapped_blob(l, e)) {
+                drop(b, layer_blob_bytes_[(size_t) l], fd_, (uint64_t) (b - base_));
+            }
+        }
+    return released;
+#else
+    (void) keep;
+    return 0;
+#endif
+}
+
 bool FileExpertSource::begin_startup_unbuffered(std::string& why) {
 #if defined(_WIN32)
     if (const char* v = std::getenv("STRATA_STARTUP_UNBUFFERED"); v != nullptr && v[0] != '\0' && std::atoi(v) == 0) {
@@ -3585,7 +3635,8 @@ bool FileExpertSource::pin_cache_complement(
         // they fit, the rest left on the mapped files; Windows commit capacity also limits the allocation (#730).
         uint64_t physical = 0;
         if (!available_memory_bytes(physical, &budget_commit)) {
-            err = "FileExpertSource: cannot determine available memory for --resident-budget-gib";
+            err = budget_automatic_ ? "FileExpertSource: cannot determine available memory for the automatic RAM copy"
+                                    : "FileExpertSource: cannot determine available memory for --resident-budget-gib";
             return false;
         }
         budget_physical = physical;
@@ -3596,16 +3647,10 @@ bool FileExpertSource::pin_cache_complement(
             // #403: 256 MiB under the room, so the engine's own allocations after this reading still leave the
             // headroom (a budget clamped to exactly the room failed the safety check below on a reading a few MB
             // lower).  An unclamped budget is unchanged.
-            if (what_fits)
-                std::fprintf(stderr, "FileExpertSource: room for the complement: %.2f GiB (%.2f GiB available %s "
-                                     "minus %.0f GiB headroom and a 0.25 GiB margin)\n",
-                             (double) clamped / 1073741824.0, (double) available / 1073741824.0, limit,
-                             (double) headroom_bytes / 1073741824.0);
-            else
-                std::fprintf(stderr, "FileExpertSource: --resident-budget-gib %.2f exceeds available %s "
-                                     "(%.2f GiB minus %.0f GiB headroom and a 0.25 GiB margin): %.2f GiB\n",
-                             (double) budget_bytes / 1073741824.0, limit, (double) available / 1073741824.0,
-                             (double) headroom_bytes / 1073741824.0, (double) clamped / 1073741824.0);
+            // the automatic RAM copy names no flag: none was given (its line used to say --resident-budget-gib)
+            const ResidentBudgetFrom from = what_fits ? ResidentBudgetFrom::WhatFits
+                                          : budget_automatic_ ? ResidentBudgetFrom::Automatic : ResidentBudgetFrom::Flag;
+            std::fputs(resident_clamp_line(from, budget_bytes, limit, available, headroom_bytes, clamped).c_str(), stderr);
             budget_bytes = clamped;
         }
         std::vector<uint64_t> ranked(offsets.size(), kNoComplement);
@@ -4217,7 +4262,8 @@ bool FileExpertSource::pin_cache_complement(
                              "cost 26%%). %s and restart; the line above should read N of N.\n", missing, lendable,
                      100.0 * (double) missing / (double) std::max<long long>(1, lendable),
                      lend ? "Free RAM or lower STRATA_RESIDENT_HEADROOM_GIB (now the RAM left free at start)"
-                          : "Raise --resident-budget-gib (the lend region comes after the ranked experts)");
+                          : budget_automatic_ ? "Free more RAM for the automatic RAM copy (the lend region comes after the ranked experts)"
+                                              : "Raise --resident-budget-gib (the lend region comes after the ranked experts)");
     }
     if (!stage_lend_regions_.empty()) {
         int64_t offered = 0;
@@ -6040,7 +6086,55 @@ bool ArenaExpertSource::open(const std::string& pack_dir, int64_t n_layers, int6
                     }
                 }
             }
-            if (arena_ram_verdict(need, hm.available, ~uint64_t{0}, fall_back_when_ram_short) == ArenaRamVerdict::FallBack) {
+            const ArenaRamVerdict verdict = arena_ram_verdict(need, hm.available, ~uint64_t{0}, fall_back_when_ram_short);
+#if defined(__linux__)
+            // #5327: the refusal reads every shortfall as one the kernel can only serve by taking another program's
+            // memory (#4051's host: an engine that was still exiting, anonymous RAM - the stall the refusal is for).
+            // On a bare Linux host the usual false alarm is a reserved hugetlb pool: MemAvailable does not count free
+            // huge pages, and a launcher may reserve the pool for exactly this arena (the arena maps MAP_HUGETLB
+            // first), so the reserve itself takes MemAvailable below the need while the pool holds all of it.  That
+            // is the case 0.1.54/0.1.55 loaded anyway ("expert arena read through the file cache") at full decode
+            // speed: credit the pool when it holds the whole arena (and free pages + droppable file pages, which the
+            // kernel evicts as the arena reads - only a small margin beyond MemAvailable's own count) and load,
+            // LOUDLY (a service setup never sees stderr).  STRATA_ARENA_FILE_CACHE=0
+            // refuses as since 0.1.56.  Not under a cgroup limit (the host's cache is not the container's to drop)
+            // and not on Windows: the proceed path was never trusted there ("buffered (not Windows)", the mapped
+            // view's trim needs the headroom the refusal keeps).
+            const bool file_cache_off = [] { const char* v = std::getenv("STRATA_ARENA_FILE_CACHE"); return v != nullptr && v[0] == '0'; }();
+            bool file_cache_arena = false;
+            uint64_t memfree_b = 0, droppable_b = 0, huge_free_b = 0;
+            if (verdict == ArenaRamVerdict::FallBack && hm.cgroup_limit == ~uint64_t{0} && !file_cache_off) {
+                if (std::ifstream info("/proc/meminfo"); info) {
+                    const std::string text((std::istreambuf_iterator<char>(info)), std::istreambuf_iterator<char>());
+                    if (meminfo_free_and_droppable(text, memfree_b, droppable_b, &huge_free_b)) {
+                        // the pool serves the arena only if the MAP_HUGETLB try is made (STRATA_NO_LARGEPAGES skips it) and
+                        // the pool holds the whole mapping, which is the padded arena plus the spare blob, not `want + blob`
+                        uint64_t map_bytes = want + (uint64_t) blob;
+                        if (pin_by_need_ && !pin_pairs_.empty() && !arena_mmap && shared_arena_file.empty()) {
+                            uint64_t at = 0;
+                            for (int64_t l = 0; l < n_layers; ++l)
+                                at += ((lay.blob_bytes(l) + 4095) & ~(uint64_t) 4095) * (uint64_t) n_expert;
+                            map_bytes = at + (uint64_t) blob;
+                        }
+                        if (std::getenv("STRATA_NO_LARGEPAGES") != nullptr || huge_free_b < map_bytes) huge_free_b = 0;
+                        file_cache_arena = arena_shortfall_served_by_file_cache(need, memfree_b, droppable_b, huge_free_b);
+                    }
+                }
+            }
+            if (file_cache_arena) {
+                std::snprintf(buf, sizeof buf,
+                              "the experts need %.2f GiB of RAM and %.2f GiB is free, but free memory, file cache and reserved huge "
+                              "pages can hold them, so they load anyway (same answers). STRATA_ARENA_FILE_CACHE=0 reads them from "
+                              "the file instead.",
+                              (double) need / gib, (double) hm.available / gib);
+                ram_warning_ = buf;   // the caller says it on stderr before the load's numbers
+                if (notices_on_stdout) {   // --serve only: a service setup never sees stderr (#5327); a plain run keeps its token stream clean
+                    std::printf("strata generate: WARNING: %s\n", buf);
+                    std::fflush(stdout);
+                }
+            } else
+#endif
+            if (verdict == ArenaRamVerdict::FallBack) {
                 // #4846 (owner 11-01): still short after the wait and the give-back.  Registering anyway can stall the whole host in
                 // reclaim until it is power-cycled: nothing is allocated, the caller takes the --mmap-experts source for this run.
                 std::snprintf(buf, sizeof buf,
@@ -6051,7 +6145,7 @@ bool ArenaExpertSource::open(const std::string& pack_dir, int64_t n_layers, int6
                 ram_short_ = true;
                 return false;
             }
-            if (hm.available < need) {
+            if (hm.available < need && ram_warning_.empty()) {
                 std::snprintf(buf, sizeof buf,
                               "the expert arena needs %.2f GiB of RAM but %.2f GiB is available (%.2f GiB short%s): the "
                               "load may swap or be stopped by the OS%s. Close other programs, or run with less RAM: "
@@ -6230,7 +6324,8 @@ bool ArenaExpertSource::open(const std::string& pack_dir, int64_t n_layers, int6
     } else {
         if (unbuffered && !padded_) st = load_experts_direct(path, a->data(), loff, lbytes, readers, /*chunk=*/8u << 20, rp);
         if (!unbuffered || padded_ || (!st.ok && st.error.empty()))   // unaligned ranges / the padded layout: the buffered reader
-            st = load_experts_ranges(path, a->data(), loff, lbytes, threads, /*chunk=*/8u << 20, rp, padded_ ? &pad_ : nullptr);
+            st = load_experts_ranges(path, a->data(), loff, lbytes, threads, /*chunk=*/8u << 20, rp, padded_ ? &pad_ : nullptr,
+                                     /*drop_behind=*/strata::core::page_cache_drop::enabled());   // integrated gfx11 under Linux
     }
     if (reg.joinable()) reg.join();
     std::fprintf(stderr, "strata generate: expert arena read %s (%s)\n", unbuffered ? "unbuffered" : "through the file cache",

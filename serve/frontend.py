@@ -135,20 +135,13 @@ EFFORT = {"none": None, "off": None, "minimal": None, "disabled": None, "false":
           "low": "low", "medium": "medium", "high": "xhigh", "xhigh": "xhigh", "max": "xhigh", "maximum": "xhigh"}
 
 
-# DeepSeek-V4.1's template takes low, medium, high (its default) and max, or a whole number 1..100 (the "Reasoning
-# Effort: N" line of its prompt).  use_family("deepseek41") switches the table; the other families keep the one above.
-EFFORT_DEEPSEEK = {"none": None, "off": None, "minimal": None, "disabled": None, "false": None,
-                   "low": "low", "medium": "medium", "high": "high", "xhigh": "max", "max": "max", "maximum": "max"}
 _EFFORT_QWEN = dict(EFFORT)
-_NUMERIC_EFFORT = False
 
 
 def use_family(family: str | None) -> None:
-    """The reasoning-effort words of the model family this server runs (module state, like ENV_TO_USER)."""
-    global _NUMERIC_EFFORT
+    """The reasoning-effort words of the model family this server runs (module state, like ENV_TO_USER): the Qwen table."""
     EFFORT.clear()
-    EFFORT.update(EFFORT_DEEPSEEK if family == "deepseek41" else _EFFORT_QWEN)
-    _NUMERIC_EFFORT = family == "deepseek41"
+    EFFORT.update(_EFFORT_QWEN)
 
 
 def effort_kwargs(value) -> dict:
@@ -157,14 +150,9 @@ def effort_kwargs(value) -> dict:
         return {}
     if value is False:
         return {"enable_thinking": False}
-    if _NUMERIC_EFFORT and isinstance(value, int) and not isinstance(value, bool):
-        if not 1 <= value <= 100:
-            raise ValueError(f"unknown reasoning effort {value!r}: use none, low, medium, high, max or 1..100")
-        return {"reasoning_effort": value}
     key = str(value).strip().lower()
     if key not in EFFORT:
-        raise ValueError(f"unknown reasoning effort {value!r}: use none, low, medium or high"
-                         + (", max or 1..100" if _NUMERIC_EFFORT else ""))
+        raise ValueError(f"unknown reasoning effort {value!r}: use none, low, medium or high")
     level = EFFORT[key]
     return {"enable_thinking": False} if level is None else {"reasoning_effort": level}
 
@@ -1121,6 +1109,9 @@ def coerce_value(value: str, declared, notes: list | None = None):
     arrived as a JSON string of itself is decoded once more."""
     if declared == "string":
         return value
+    boolean = declared == "boolean" or (isinstance(declared, list) and "boolean" in declared and "string" not in declared)
+    if boolean and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"         # #5979: the model's Python spelling (True / False) of a declared boolean is the boolean
     try:
         v = json.loads(value)
     except ValueError:
@@ -1251,8 +1242,8 @@ class OutputParser:
 
     @property
     def clean(self) -> bool:
-        """Nothing is held back: a clean point to stop the thinking at (a parser that rewrites the model's text, as
-        serve/dsml.py's does, also counts what it holds)."""
+        """Nothing is held back: a clean point to stop the thinking at (a parser that rewrites the model's text also counts
+        what it holds)."""
         return not self.buf and not self._held
 
     def _ok_at(self, p: int) -> bool:
@@ -2074,3 +2065,23 @@ class OutputParser:
         self._reset_scan()
         self.state, self.lead = "content", True
         return [Event("tool_call", call=call)]
+
+
+class JsonOutputParser(OutputParser):
+    """The parser for a model whose chat template tells it to write each call as JSON inside the wrapper:
+    `<tool_call>\n{"name": NAME, "arguments": {...}}\n</tool_call>` (Qwen3, Hermes).  OutputParser already reads that form, but only
+    as a recovery for a model that drifted off the XML form; for a JSON template it is the form itself, so it is read whether or
+    not the server's tool_call_recovery is on.  Everything else (reasoning, code fences, declared-tool rules) is OutputParser's."""
+
+    def __init__(self, thinking: bool = True, tools: list[dict] | None = None, stream_tools: bool = False,
+                 recover: bool = False, declared_only: bool = False, deferred: bool = False):
+        super().__init__(thinking=thinking, tools=tools, stream_tools=stream_tools, recover=True,
+                         declared_only=declared_only, deferred=deferred)
+
+
+def parser_for_template(source: str | None):
+    """The OutputParser class for a chat template's text, by the tool-call form the template documents (serve/toolformat.py):
+    the JSON form gets JsonOutputParser; the XML form every Strata model ships with, templates without tools, and forms nothing
+    here reads keep OutputParser (the same class as before this existed)."""
+    from serve import toolformat
+    return JsonOutputParser if toolformat.tool_format(source or "") == "json" else OutputParser

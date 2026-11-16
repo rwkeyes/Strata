@@ -18,11 +18,15 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "strata/core/geometry.hpp"
+
 namespace strata::prefill {
 namespace {
 
-constexpr int N = 2560, HC = 4, D = N * HC, LR = 320;
-constexpr int S = 128, HK = 16, HV = 48, C = 10240;
+constexpr int N = strata::core::kCompiledGeometry.n_embd, HC = strata::core::kCompiledGeometry.hc, D = N * HC, LR = strata::core::kCompiledGeometry.hc_lr;
+constexpr int KU = strata::core::kCompiledGeometry.n_expert_used;   // routed experts per token (10 for Flash-Next)
+constexpr int64_t FFC = strata::core::kCompiledGeometry.n_ff;   // the routed (and shared) expert width: 640 for Flash-Next
+constexpr int S = strata::core::kCompiledGeometry.ssm_state_size, HK = strata::core::kCompiledGeometry.ssm_k_heads, HV = strata::core::kCompiledGeometry.ssm_v_heads, C = strata::core::kCompiledGeometry.ssm_conv_channels;
 
 __device__ __forceinline__ float warp_sum(float v) {
 #pragma unroll
@@ -2248,7 +2252,7 @@ __global__ void route_kernel(const float* __restrict__ logits, int32_t* __restri
 #pragma unroll
     for (int i = 0; i < REG; ++i) { v[i] *= rcp; if (isnan(v[i])) v[i] = -FLT_MAX; }
     float selected = 0.0f, selected_sum = 0.0f;
-    for (int rank = 0; rank < 10; ++rank) {
+    for (int rank = 0; rank < KU; ++rank) {
         float best = v[0];
         int ex = lane;
 #pragma unroll
@@ -2260,43 +2264,46 @@ __global__ void route_kernel(const float* __restrict__ logits, int32_t* __restri
             if (ob > best || (ob == best && oi < ex)) { best = ob; ex = oi; }
         }
         if ((ex & 31) == lane) { v[ex / 32] = -INFINITY; selected_sum += best; }
-        if (lane == 0) ids[t * 10 + rank] = ex;
+        if (lane == 0) ids[t * KU + rank] = ex;
         if (rank == lane) selected = best;
     }
     selected_sum = fmaxf(warp_sum(selected_sum), 6.103515625e-5f);
-    if (lane < 10) wout[t * 10 + lane] = selected / selected_sum;
+    if (lane < KU) wout[t * KU + lane] = selected / selected_sum;
 }
-// Strata blob: gate/up codes [1280][640 B], down codes [2560][160 B], gate/up scales [1280][40] f16, down scales [2560][10] f16
+// Strata blob: gate/up codes [2 F][E / 4 B], down codes [E][F / 4 B], gate/up scales [2 F][E / 64] f16, down scales [E][F / 64] f16
+// (E = N, F = FFC: the compiled geometry's; Flash-Next 2560 and 640: [1280][640 B], [2560][160 B], [1280][40], [2560][10])
+constexpr int BLOB_GU_ROWS = 2 * (int) FFC, BLOB_ROW_GU = N / 4, BLOB_ROW_D = (int) FFC / 4, BLOB_SC_GU = N / 64, BLOB_SC_D = (int) FFC / 64;
+static_assert(N % 64 == 0 && FFC % 64 == 0, "the Strata Q2 blob holds whole 64-weight blocks");
 template <bool HALF>
 __global__ void blob_dequant_kernel(const uint8_t* __restrict__ blob, uint16_t* __restrict__ gu16,
                                     uint16_t* __restrict__ d16) {
-    constexpr size_t O_D_CODES = (size_t) 1280 * 640, O_GU_SC = O_D_CODES + (size_t) 2560 * 160,
-                     O_D_SC = O_GU_SC + (size_t) 1280 * 40 * 2;
+    constexpr size_t O_D_CODES = (size_t) BLOB_GU_ROWS * BLOB_ROW_GU, O_GU_SC = O_D_CODES + (size_t) N * BLOB_ROW_D,
+                     O_D_SC = O_GU_SC + (size_t) BLOB_GU_ROWS * BLOB_SC_GU * 2;
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;   // one thread per 4 weights (one code byte)
-    const int64_t n_gu = 1280LL * 640, n_d = 2560LL * 160;
+    const int64_t n_gu = (int64_t) BLOB_GU_ROWS * BLOB_ROW_GU, n_d = (int64_t) N * BLOB_ROW_D;
     if (i < n_gu) {
-        const int64_t row = i / 640, byte = i % 640;
-        const uint8_t c = blob[row * 640 + byte];
-        const uint8_t* sp = blob + O_GU_SC + (size_t) (row * 40 + (byte * 4) / 64) * 2;
+        const int64_t row = i / BLOB_ROW_GU, byte = i % BLOB_ROW_GU;
+        const uint8_t c = blob[row * BLOB_ROW_GU + byte];
+        const uint8_t* sp = blob + O_GU_SC + (size_t) (row * BLOB_SC_GU + (byte * 4) / 64) * 2;
         const float d = __half2float(__ushort_as_half((uint16_t) (sp[0] | (sp[1] << 8))));
-        uint16_t* o = gu16 + row * 2560 + byte * 4;
+        uint16_t* o = gu16 + row * N + byte * 4;
 #pragma unroll
         for (int k = 0; k < 4; ++k) { const float v = (float) (((c >> (2 * k)) & 3) - 1) * d; o[k] = HALF ? hf(v) : bf(v); }
     } else if (i < n_gu + n_d) {
-        const int64_t j = i - n_gu, row = j / 160, byte = j % 160;
-        const uint8_t c = blob[O_D_CODES + row * 160 + byte];
-        const uint8_t* sp = blob + O_D_SC + (size_t) (row * 10 + (byte * 4) / 64) * 2;
+        const int64_t j = i - n_gu, row = j / BLOB_ROW_D, byte = j % BLOB_ROW_D;
+        const uint8_t c = blob[O_D_CODES + row * BLOB_ROW_D + byte];
+        const uint8_t* sp = blob + O_D_SC + (size_t) (row * BLOB_SC_D + (byte * 4) / 64) * 2;
         const float d = __half2float(__ushort_as_half((uint16_t) (sp[0] | (sp[1] << 8))));
-        uint16_t* o = d16 + row * 640 + byte * 4;
+        uint16_t* o = d16 + row * FFC + byte * 4;
 #pragma unroll
         for (int k = 0; k < 4; ++k) { const float v = (float) (((c >> (2 * k)) & 3) - 1) * d; o[k] = HALF ? hf(v) : bf(v); }
     }
 }
 __global__ void swiglu_il_kernel(const float* __restrict__ gu, uint16_t* __restrict__ h16, int64_t n) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n * 640) return;
-    const int64_t r = i / 640, k = i % 640;
-    const float g = gu[r * 1280 + 2 * k], u = gu[r * 1280 + 2 * k + 1];
+    if (i >= n * FFC) return;
+    const int64_t r = i / FFC, k = i % FFC;
+    const float g = gu[r * (2 * FFC) + 2 * k], u = gu[r * (2 * FFC) + 2 * k + 1];
     h16[i] = hf_sat(g / (1.0f + __expf(-g)) * u);
 }
 // The Volta prompt experts (gemm_iq_f16_grouped): SwiGLU of the gate/up product's rows (gate 0..n_ff, up n_ff..2 n_ff,
@@ -2313,7 +2320,7 @@ __global__ void swiglu_split_f16_kernel(const float* __restrict__ gu, uint16_t* 
 __global__ void swiglu_pair_kernel(const float* __restrict__ g, const float* __restrict__ u, uint16_t* __restrict__ h16,
                                    int64_t n) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n * 640) return;
+    if (i >= n * FFC) return;
     const float a = g[i];
     h16[i] = hf_sat(a / (1.0f + __expf(-a)) * u[i]);
 }
@@ -2334,10 +2341,10 @@ __global__ void moe_combine_kernel(const float* __restrict__ Dm, const int32_t* 
     const int64_t t = i / N, d = i % N;
     float s = 0.0f;
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
-        const int64_t r = slot[t * 10 + k];
+    for (int k = 0; k < KU; ++k) {
+        const int64_t r = slot[t * KU + k];
         const float v = row_sd ? Dm[r * N + d] * row_sd[r] : Dm[r * N + d];   // the product scale_down_rows stored
-        s = fmaf(w[t * 10 + k], v, s);
+        s = fmaf(w[t * KU + k], v, s);
     }
     bo[i] = s + shared[i] * sigm(sg[t]);
 }
@@ -2352,12 +2359,12 @@ __global__ void moe_combine4_kernel(const float* __restrict__ Dm, const int32_t*
     if (i >= T * (N / 4)) return;
     const int64_t t = i / (N / 4), d = (i % (N / 4)) * 4;
     float4 s = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
-    float4 v[10];
-    float ww[10];
+    float4 v[KU];
+    float ww[KU];
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
-        ww[k] = w[t * 10 + k];
-        const int64_t r = slot[t * 10 + k];
+    for (int k = 0; k < KU; ++k) {
+        ww[k] = w[t * KU + k];
+        const int64_t r = slot[t * KU + k];
         v[k] = *reinterpret_cast<const float4*>(Dm + r * N + d);
         if (row_sd) {   // NVFP4 in MMQ: the row's s_down, as moe_combine_kernel applies it
             const float sd = row_sd[r];
@@ -2365,7 +2372,7 @@ __global__ void moe_combine4_kernel(const float* __restrict__ Dm, const int32_t*
         }
     }
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
+    for (int k = 0; k < KU; ++k) {
         s.x = fmaf(ww[k], v[k].x, s.x); s.y = fmaf(ww[k], v[k].y, s.y);
         s.z = fmaf(ww[k], v[k].z, s.z); s.w = fmaf(ww[k], v[k].w, s.w);
     }
@@ -2382,17 +2389,17 @@ __global__ void moe_combine16_kernel(const uint16_t* __restrict__ Dm, const int3
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;   // float4 index
     if (i >= T * (N / 4)) return;
     const int64_t t = i / (N / 4), d = (i % (N / 4)) * 4;
-    uint2 raw[10];
-    float ww[10];
+    uint2 raw[KU];
+    float ww[KU];
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
-        ww[k] = w[t * 10 + k];
-        const int64_t r = slot[t * 10 + k];
+    for (int k = 0; k < KU; ++k) {
+        ww[k] = w[t * KU + k];
+        const int64_t r = slot[t * KU + k];
         raw[k] = *reinterpret_cast<const uint2*>(Dm + r * N + d);
     }
     float4 s = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
+    for (int k = 0; k < KU; ++k) {
         const float a = __half2float(__ushort_as_half((unsigned short) (raw[k].x & 0xffffu))), b = __half2float(__ushort_as_half((unsigned short) (raw[k].x >> 16)));
         const float c = __half2float(__ushort_as_half((unsigned short) (raw[k].y & 0xffffu))), e = __half2float(__ushort_as_half((unsigned short) (raw[k].y >> 16)));
         s.x = fmaf(ww[k], a, s.x); s.y = fmaf(ww[k], b, s.y);
@@ -2608,6 +2615,22 @@ __device__ __forceinline__ um_b16 um_frag(const uint16_t* p) {   // 16 BF16 (32 
     const uint32_t w[8] = {a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w};
     return __builtin_bit_cast(um_b16, w);
 }
+// The FP16 prompt path (g_act_f16, STRATA_HIP_PROMPT_F16=1): lo16 holds FP16 bits, so the same product runs on the FP16 matrix-core
+// builtin; the BF16 w_up rows are converted to FP16 while they are staged (bf_to_hf_conv, the conversion the FP16 GEMM route applies;
+// a BF16 value is exact in FP16 above 6e-5).  FP32 accumulate, same K order as the BF16 kernel.
+typedef _Float16 um_h16 __attribute__((ext_vector_type(16)));
+__device__ __forceinline__ um_f8 um_wmma_h(um_h16 a, um_h16 b, um_f8 c) {
+#if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__) || defined(__gfx1150__) || defined(__gfx1151__)
+    return __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c);
+#else
+    (void) a; (void) b; return c;   // not a gfx11 device pass: never launched (runtime gate)
+#endif
+}
+__device__ __forceinline__ um_h16 um_frag_h(const uint16_t* p) {   // 16 FP16 (32 bytes, 16-byte aligned)
+    const uint4 a = *reinterpret_cast<const uint4*>(p), b = *reinterpret_cast<const uint4*>(p + 8);
+    const uint32_t w[8] = {a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w};
+    return __builtin_bit_cast(um_h16, w);
+}
 // The block's w_up rows (16 columns x 4 streams x all 320 k) are staged in LDS once; each wave streams its own 16
 // tokens' lo16 rows from global memory (every A fragment feeds the 4 streams' WMMAs) - one barrier per block.
 __global__ void __launch_bounds__(512) gr_upmix_kernel(const uint16_t* __restrict__ lo16, const uint16_t* __restrict__ wu,
@@ -2621,10 +2644,18 @@ __global__ void __launch_bounds__(512) gr_upmix_kernel(const uint16_t* __restric
     // along rows (token-tile fastest scattered them over 512 rows x 40 KB per block: 28 ms instead of 3.7 at 8K)
     const int64_t t0 = (int64_t) blockIdx.y * UM_T + 16 * wave;
     const int d0 = blockIdx.x * UM_D;
+    const bool f16 = g_act_f16 != 0;   // uniform: the FP16 prompt path
     for (int i = tid; i < HC * UM_D * (LR / 8); i += 512) {
         const int rr = i / (LR / 8), q = i % (LR / 8);
         const int c = rr / UM_D, dd = rr % UM_D;
-        *reinterpret_cast<uint4*>(&sB[rr][8 * q]) = *reinterpret_cast<const uint4*>(wu + (size_t) (c * N + d0 + dd) * LR + 8 * q);
+        uint4 v = *reinterpret_cast<const uint4*>(wu + (size_t) (c * N + d0 + dd) * LR + 8 * q);
+        if (f16) {
+            uint32_t* w32 = reinterpret_cast<uint32_t*>(&v);
+#pragma unroll
+            for (int j = 0; j < 4; ++j)
+                w32[j] = (uint32_t) bf_to_hf_conv((uint16_t) (w32[j] & 0xffffu)) | ((uint32_t) bf_to_hf_conv((uint16_t) (w32[j] >> 16)) << 16);
+        }
+        *reinterpret_cast<uint4*>(&sB[rr][8 * q]) = v;
     }
     __syncthreads();
     if (t0 >= T) return;
@@ -2633,11 +2664,20 @@ __global__ void __launch_bounds__(512) gr_upmix_kernel(const uint16_t* __restric
     um_f8 acc[HC];
 #pragma unroll
     for (int c = 0; c < HC; ++c) acc[c] = um_f8{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    if (f16) {
 #pragma unroll
-    for (int ks = 0; ks < LR; ks += 16) {
-        const um_b16 a = um_frag(arow + ks);
+        for (int ks = 0; ks < LR; ks += 16) {
+            const um_h16 a = um_frag_h(arow + ks);
 #pragma unroll
-        for (int c = 0; c < HC; ++c) acc[c] = um_wmma(a, um_frag(&sB[c * UM_D + l16][ks]), acc[c]);
+            for (int c = 0; c < HC; ++c) acc[c] = um_wmma_h(a, um_frag_h(&sB[c * UM_D + l16][ks]), acc[c]);
+        }
+    } else {
+#pragma unroll
+        for (int ks = 0; ks < LR; ks += 16) {
+            const um_b16 a = um_frag(arow + ks);
+#pragma unroll
+            for (int c = 0; c < HC; ++c) acc[c] = um_wmma(a, um_frag(&sB[c * UM_D + l16][ks]), acc[c]);
+        }
     }
     const int d = d0 + l16;
 #pragma unroll
@@ -3204,20 +3244,36 @@ void route(const float* logits, int32_t* ids, float* weights, int64_t T, int64_t
     else if (n_expert == 256)
         route_kernel<8><<<(unsigned) ((T + 7) / 8), 256, 0, (cudaStream_t) stream>>>(logits, ids, weights, T);
     else
-        strata::kernels::router_top10(logits, (int) T, (int) n_expert, 10, ids, weights, stream);
+        strata::kernels::router_top10(logits, (int) T, (int) n_expert, KU, ids, weights, stream);
     check("route");
 }
 void blob_dequant(const uint8_t* blob, uint16_t* gu16, uint16_t* down16, void* stream) {
-    blob_dequant_kernel<false><<<blocks_for(1280LL * 640 + 2560LL * 160), 256, 0, (cudaStream_t) stream>>>(blob, gu16, down16);
+    blob_dequant_kernel<false><<<blocks_for((int64_t) BLOB_GU_ROWS * BLOB_ROW_GU + (int64_t) N * BLOB_ROW_D), 256, 0, (cudaStream_t) stream>>>(blob, gu16, down16);
     check("blob_dequant");
 }
 void blob_dequant_f16(const uint8_t* blob, uint16_t* gu16, uint16_t* down16, void* stream) {
-    blob_dequant_kernel<true><<<blocks_for(1280LL * 640 + 2560LL * 160), 256, 0, (cudaStream_t) stream>>>(blob, gu16, down16);
+    blob_dequant_kernel<true><<<blocks_for((int64_t) BLOB_GU_ROWS * BLOB_ROW_GU + (int64_t) N * BLOB_ROW_D), 256, 0, (cudaStream_t) stream>>>(blob, gu16, down16);
     check("blob_dequant_f16");
+}
+__global__ void fewrows_record_kernel(uint8_t* rec, unsigned long long blob, int ne, int o0) {
+    const int i = threadIdx.x;
+    int32_t* r = reinterpret_cast<int32_t*>(rec + 8);
+    if (i == 0) {
+        *reinterpret_cast<unsigned long long*>(rec) = blob;
+        r[0] = 0;
+        r[1] = ne;
+        r[2] = 1;
+        r[3] = 0;
+    }
+    if (i < ne) r[4 + i] = o0 + i;
+}
+void fewrows_record(void* rec, const void* blob, int ne, int o0, void* stream) {
+    fewrows_record_kernel<<<1, 32, 0, (cudaStream_t) stream>>>((uint8_t*) rec, (unsigned long long) (uintptr_t) blob, ne, o0);
+    check("fewrows_record");
 }
 void swiglu_interleaved(const float* gu, uint16_t* h16, int64_t n, void* stream) {
     if (n <= 0) return;
-    swiglu_il_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(gu, h16, n);
+    swiglu_il_kernel<<<blocks_for(n * FFC), 256, 0, (cudaStream_t) stream>>>(gu, h16, n);
     check("swiglu_interleaved");
 }
 void swiglu_split_f16(const float* gu, uint16_t* h16, int64_t rows, int n_ff, bool interleaved, void* stream) {
@@ -3226,7 +3282,7 @@ void swiglu_split_f16(const float* gu, uint16_t* h16, int64_t rows, int n_ff, bo
     check("swiglu_split_f16");
 }
 void swiglu_pair(const float* g, const float* u, uint16_t* h16, int64_t n, void* stream) {
-    swiglu_pair_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(g, u, h16, n);
+    swiglu_pair_kernel<<<blocks_for(n * FFC), 256, 0, (cudaStream_t) stream>>>(g, u, h16, n);
     check("swiglu_pair");
 }
 namespace {
@@ -3269,9 +3325,9 @@ __global__ void moe_combine_peer_kernel(const float* __restrict__ Dm, const int3
     const int64_t t = i / N, d = i % N;
     float s = 0.0f;
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
-        const int32_t r = slot[t * 10 + k];
-        if (r < rows_local) s = fmaf(w[t * 10 + k], Dm[(int64_t) r * N + d], s);
+    for (int k = 0; k < KU; ++k) {
+        const int32_t r = slot[t * KU + k];
+        if (r < rows_local) s = fmaf(w[t * KU + k], Dm[(int64_t) r * N + d], s);
     }
     bo[i] = (s + peer[i]) + shared[i] * sigm(sg[t]);
 }
@@ -3281,7 +3337,7 @@ __global__ void peer_scatter_add_kernel(float* __restrict__ sum, const float* __
     if (i >= n * N) return;
     const int64_t r = i / N, d = i % N;
     const int32_t p = pair[r];
-    float* o = sum + (int64_t) (p / 10) * N + d;
+    float* o = sum + (int64_t) (p / KU) * N + d;
     *o = fmaf(wk[p], rows[i], *o);
 }
 __global__ void moe_combine_peer16_kernel(const float* __restrict__ Dm, const int32_t* __restrict__ slot,
@@ -3293,9 +3349,9 @@ __global__ void moe_combine_peer16_kernel(const float* __restrict__ Dm, const in
     const int64_t t = i / N, d = i % N;
     float s = 0.0f;
 #pragma unroll
-    for (int k = 0; k < 10; ++k) {
-        const int32_t r = slot[t * 10 + k];
-        if (r < rows_local) s = fmaf(w[t * 10 + k], Dm[(int64_t) r * N + d], s);
+    for (int k = 0; k < KU; ++k) {
+        const int32_t r = slot[t * KU + k];
+        if (r < rows_local) s = fmaf(w[t * KU + k], Dm[(int64_t) r * N + d], s);
     }
     bo[i] = (s + __half2float(__ushort_as_half(peer16[i]))) + shared[i] * sigm(sg[t]);
 }

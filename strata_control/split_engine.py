@@ -33,7 +33,6 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import re
-from typing import Any
 
 # What has been run with the host exchange, per make: {make: {architecture: card counts}}.  NVIDIA: 2x RTX A6000 (boston, sm_86), 2x RTX PRO 6000 (srv118, sm_120).
 # AMD: 4x Radeon AI PRO R9700 (r9700, gfx1201; phaseA-tests/sfnx/RESULTS-HIP.md): 4 cards with UD-Q4_K_XL, 3 cards with the IQ3_S set, 2 cards with the IQ3_S set at 8K context and 2 slots only
@@ -379,16 +378,11 @@ def _named_or_visible(cards: list[Card], indexes: list[int] | None) -> list[Card
 
 
 def ram_gib() -> tuple[float, float]:
-    """(total, available) GiB of this PC's RAM from /proc/meminfo; (0, 0) where there is none."""
-    try:
-        vals = {}
-        for line in open("/proc/meminfo", encoding="ascii"):
-            k, _, v = line.partition(":")
-            if k in ("MemTotal", "MemAvailable"):
-                vals[k] = int(v.split()[0]) / (1 << 20)
-        return vals.get("MemTotal", 0.0), vals.get("MemAvailable", 0.0)
-    except OSError:
-        return 0.0, 0.0
+    """(total, available) GiB of this PC's RAM from /proc/meminfo, inside a container its memory limit
+    (strata_control/cgroup_memory.py); (0, 0) where there is none."""
+    from strata_control import cgroup_memory
+    total, available = cgroup_memory.ram_bytes()
+    return (total or 0) / (1 << 30), (available or 0) / (1 << 30)
 
 
 def _flag(args: list, name: str) -> str | None:
@@ -528,7 +522,6 @@ def record_launch_manifest(d: Decision, mode_: str, environ: dict | None = None)
 
 
 def _apply(cfg: dict, *, exe_for_cards, system, allow_untested, probe, ram, scan, data_dir, mode_: str = "auto") -> Decision:
-    import os
     import pathlib
     import sys
 
@@ -672,7 +665,7 @@ def apply_run_config(cfg: dict, *, allow_untested: bool = False, exe_for_cards=N
     Auto and a "no" (also a missing draft layer or engine package): nothing changes and no line. "on" and a "no": one line. Never raises. `facts` are the
     hooks of apply_to_config (system, probe, ram, scan, data_dir), replaceable for tests."""
     m = mode(cfg)
-    if cfg.get("arch") == "deepseek41" or m == "off":
+    if m == "off":
         return Decision(False, ["the all-cards split engine is turned off"], quiet=True), "", False
     args = [str(a) for a in cfg.get("args") or []]
     mtp_dir = _flag(args, "--mtp")

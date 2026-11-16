@@ -1,0 +1,105 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1180' height='1032' viewBox='0 0 1180 1032'>
+<rect width='1180' height='1032' fill='#ffffff'/>
+<g font-family='ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif' fill='#1f2430'>
+<text x='34' y='46' font-size='23' font-weight='700'>Dirigo 0.2.15 vs stock 0.2.15 — same card, same requests</text>
+<text x='34' y='70' font-size='13.5' fill='#6b7280'>Intel Arc Pro B70 32 GB · engine 0.1.61 on both sides · Qwen3.8-Flash-Next Coder IQ1_M · GuideLLM 0.8.1, 512 in / 128 out, 45 s per point</text>
+<text x='66' y='134' font-size='16' font-weight='600'>Time to first token — lower is better</text>
+<text x='66' y='154' font-size='12.5' fill='#6b7280'>median per request, ms</text>
+<line x1='66' y1='500.0' x2='676' y2='500.0' stroke='#e5e7eb'/>
+<text x='56' y='504.0' font-size='11.5' fill='#6b7280' text-anchor='end'>0 s</text>
+<line x1='66' y1='435.2' x2='676' y2='435.2' stroke='#e5e7eb'/>
+<text x='56' y='439.2' font-size='11.5' fill='#6b7280' text-anchor='end'>2 s</text>
+<line x1='66' y1='370.4' x2='676' y2='370.4' stroke='#e5e7eb'/>
+<text x='56' y='374.4' font-size='11.5' fill='#6b7280' text-anchor='end'>4 s</text>
+<line x1='66' y1='305.6' x2='676' y2='305.6' stroke='#e5e7eb'/>
+<text x='56' y='309.6' font-size='11.5' fill='#6b7280' text-anchor='end'>6 s</text>
+<line x1='66' y1='240.8' x2='676' y2='240.8' stroke='#e5e7eb'/>
+<text x='56' y='244.8' font-size='11.5' fill='#6b7280' text-anchor='end'>8 s</text>
+<line x1='66' y1='176.0' x2='676' y2='176.0' stroke='#e5e7eb'/>
+<text x='56' y='180.0' font-size='11.5' fill='#6b7280' text-anchor='end'>10 s</text>
+<line x1='66' y1='500' x2='676' y2='500' stroke='#6b7280'/>
+<rect x='85.2' y='475.7' width='54' height='24.3' rx='3' fill='#0a8f6c'/>
+<text x='112.2' y='468.7' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>749 ms</text>
+<rect x='145.2' y='469.1' width='54' height='30.9' rx='3' fill='#9aa4b2'/>
+<text x='172.2' y='462.1' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>954 ms</text>
+<text x='142.2' y='528' font-size='14' font-weight='700' fill='#0a8f6c' text-anchor='middle'>-21.4 %</text>
+<text x='142.2' y='550' font-size='12.5' fill='#6b7280' text-anchor='middle'>1 stream</text>
+<rect x='237.8' y='415.2' width='54' height='84.8' rx='3' fill='#0a8f6c'/>
+<text x='264.8' y='408.2' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>2617 ms</text>
+<rect x='297.8' y='404.2' width='54' height='95.8' rx='3' fill='#9aa4b2'/>
+<text x='324.8' y='397.2' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>2957 ms</text>
+<text x='294.8' y='528' font-size='14' font-weight='700' fill='#0a8f6c' text-anchor='middle'>-11.5 %</text>
+<text x='294.8' y='550' font-size='12.5' fill='#6b7280' text-anchor='middle'>2 streams</text>
+<rect x='390.2' y='294.4' width='54' height='205.6' rx='3' fill='#0a8f6c'/>
+<text x='417.2' y='287.4' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>6346 ms</text>
+<rect x='450.2' y='260.2' width='54' height='239.8' rx='3' fill='#9aa4b2'/>
+<text x='477.2' y='253.2' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>7403 ms</text>
+<text x='447.2' y='528' font-size='14' font-weight='700' fill='#0a8f6c' text-anchor='middle'>-14.3 %</text>
+<text x='447.2' y='550' font-size='12.5' fill='#6b7280' text-anchor='middle'>4 streams</text>
+<rect x='542.8' y='198.2' width='54' height='301.8' rx='3' fill='#0a8f6c'/>
+<text x='569.8' y='191.2' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>9314 ms</text>
+<rect x='602.8' y='193.7' width='54' height='306.3' rx='3' fill='#9aa4b2'/>
+<text x='629.8' y='186.7' font-size='12' font-weight='600' fill='#1f2430' text-anchor='middle'>9453 ms</text>
+<text x='599.8' y='528' font-size='14' font-weight='700' fill='#0a8f6c' text-anchor='middle'>-1.5 %</text>
+<text x='599.8' y='550' font-size='12.5' fill='#6b7280' text-anchor='middle'>8 streams</text>
+<rect x='66' y='573' width='14' height='14' rx='3' fill='#0a8f6c'/><text x='87' y='584' font-size='13'>Dirigo port (this fork)</text>
+<rect x='272' y='573' width='14' height='14' rx='3' fill='#9aa4b2'/><text x='293' y='584' font-size='13'>stock Strata v0.2.15</text>
+<text x='726' y='134' font-size='16' font-weight='600'>The engine itself: parity</text>
+<text x='726' y='154' font-size='12.5' fill='#6b7280'>direct-to-engine battery, median of 2 interleaved passes</text>
+<rect x='800' y='182' width='226' height='186' fill='#f5f6f8'/>
+<line x1='913.0' y1='178' x2='913.0' y2='370' stroke='#6b7280' stroke-dasharray='3 3'/>
+<text x='792' y='396' font-size='11' fill='#6b7280' text-anchor='end'>-1.5 %</text>
+<text x='913.0' y='396' font-size='11' fill='#6b7280' text-anchor='middle'>0</text>
+<text x='1034' y='396' font-size='11' fill='#6b7280'>+1.5 %</text>
+<text x='726' y='204' font-size='11.5' fill='#6b7280'>code 32</text>
+<circle cx='962.6' cy='200' r='4.5' fill='#0a8f6c'/>
+<circle cx='932.7' cy='200' r='4.5' fill='#2563eb'/>
+<text x='726' y='230' font-size='11.5' fill='#6b7280'>fresh 4k</text>
+<circle cx='999.5' cy='226' r='4.5' fill='#0a8f6c'/>
+<circle cx='922.2' cy='226' r='4.5' fill='#2563eb'/>
+<text x='726' y='256' font-size='11.5' fill='#6b7280'>followup 4k</text>
+<circle cx='913.0' cy='252' r='4.5' fill='#0a8f6c'/>
+<circle cx='922.9' cy='252' r='4.5' fill='#2563eb'/>
+<text x='726' y='282' font-size='11.5' fill='#6b7280'>needle 7k</text>
+<circle cx='933.5' cy='278' r='4.5' fill='#0a8f6c'/>
+<circle cx='920.7' cy='278' r='4.5' fill='#2563eb'/>
+<text x='726' y='308' font-size='11.5' fill='#6b7280'>fresh 8k</text>
+<circle cx='929.4' cy='304' r='4.5' fill='#0a8f6c'/>
+<circle cx='921.8' cy='304' r='4.5' fill='#2563eb'/>
+<text x='726' y='334' font-size='11.5' fill='#6b7280'>followup 9k</text>
+<circle cx='946.1' cy='330' r='4.5' fill='#0a8f6c'/>
+<circle cx='913.0' cy='330' r='4.5' fill='#2563eb'/>
+<text x='726' y='360' font-size='11.5' fill='#6b7280'>long 30k</text>
+<circle cx='925.0' cy='356' r='4.5' fill='#0a8f6c'/>
+<circle cx='859.5' cy='356' r='4.5' fill='#2563eb'/>
+<circle cx='732' cy='420' r='4.5' fill='#0a8f6c'/><text x='742' y='424' font-size='11.5'>prefill</text>
+<circle cx='810' cy='420' r='4.5' fill='#2563eb'/><text x='820' y='424' font-size='11.5'>decode</text>
+<text x='726' y='448' font-size='12.5' font-weight='600'>Largest difference on any leg: 1.1 %</text>
+<text x='726' y='466' font-size='11.5' fill='#6b7280'>inside the run-to-run spread: engine speed is the same</text>
+<text x='66' y='706' font-size='15' font-weight='600'>Work finished inside each fixed 45 s window</text>
+<text x='434' y='706' font-size='11.5' fill='#6b7280'>(128 output tokens per finished request; one request ≈ 4.8 % of a window)</text>
+<text x='66' y='741' font-size='12' fill='#6b7280'>1 stream</text>
+<rect x='162' y='732' width='150.0' height='11' rx='2' fill='#0a8f6c'/>
+<text x='318.0' y='742' font-size='11' fill='#1f2430'>22 requests · 62.6 tok/s</text>
+<rect x='162' y='747' width='143.2' height='11' rx='2' fill='#9aa4b2'/>
+<text x='311.2' y='757' font-size='11' fill='#6b7280'>21 requests · 59.7 tok/s</text>
+<text x='66' y='775' font-size='12' fill='#6b7280'>2 streams</text>
+<rect x='162' y='766' width='150.0' height='11' rx='2' fill='#0a8f6c'/>
+<text x='318.0' y='776' font-size='11' fill='#1f2430'>22 requests · 62.6 tok/s</text>
+<rect x='162' y='781' width='143.2' height='11' rx='2' fill='#9aa4b2'/>
+<text x='311.2' y='791' font-size='11' fill='#6b7280'>21 requests · 59.7 tok/s</text>
+<text x='66' y='809' font-size='12' fill='#6b7280'>4 streams</text>
+<rect x='162' y='800' width='150.0' height='11' rx='2' fill='#0a8f6c'/>
+<text x='318.0' y='810' font-size='11' fill='#1f2430'>23 requests · 65.4 tok/s</text>
+<rect x='162' y='815' width='130.4' height='11' rx='2' fill='#9aa4b2'/>
+<text x='298.4' y='825' font-size='11' fill='#6b7280'>20 requests · 56.9 tok/s</text>
+<text x='66' y='843' font-size='12' fill='#6b7280'>8 streams</text>
+<rect x='162' y='834' width='150.0' height='11' rx='2' fill='#0a8f6c'/>
+<text x='318.0' y='844' font-size='11' fill='#1f2430'>22 requests · 62.6 tok/s</text>
+<rect x='162' y='849' width='143.2' height='11' rx='2' fill='#9aa4b2'/>
+<text x='311.2' y='859' font-size='11' fill='#6b7280'>21 requests · 59.7 tok/s</text>
+<line x1='34' y1='962' x2='1146' y2='962' stroke='#e5e7eb'/>
+<text x='34' y='980' font-size='11.5' fill='#6b7280'>Source: dirigo-results/0.2.15/guidellm/guidellm-0215ab-d0215.json and -s0215.json, medians of the per-request samples; battery/*.json. Recompute with scripts/make-chart.py.</text>
+<text x='34' y='997' font-size='11.5' fill='#6b7280'>One pass per arm in one session; positional drift in this rig measured 2–4 % on the 0.2.12→0.2.13 pair, and the same legs re-run on 0.2.14 land within 0.5 % of these. GuideLLM sends unique prompts, so the fork's cache-off path applies — a conversation switches the cache back on.</text>
+<text x='34' y='1014' font-size='11.5' font-weight='600' fill='#1f2430'>Single-user figures: both arms ran one request at a time, so the advantage falls to zero at eight concurrent clients, where the two servers are queueing.</text>
+</g></svg>

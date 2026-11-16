@@ -1,0 +1,3 @@
+[09:35:27] --- ctest (kernel parity battery, AOT bmg-g31)
+98% tests passed, 2 tests failed out of 85
+  failed: ple_parity qsa_prompt_attn_parity [09:38:18]   ctest rc=8

@@ -1,0 +1,3 @@
+[09:30:37] --- ctest (kernel parity battery, AOT bmg-g31)
+100% tests passed, 0 tests failed out of 85
+[09:33:26]   ctest rc=0

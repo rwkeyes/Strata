@@ -1,6 +1,6 @@
 # Install Strata
 
-This page is for anyone installing or updating Strata (version 0.2.12). Use the **desktop app** for a graphical
+This page is for anyone installing or updating Strata (version 0.2.15). Use the **desktop app** for a graphical
 interface, or the **Terminal** for `strata launch` and coding tools. Both use released engine packages. A normal
 install does not need a source checkout or a startup `.bat` file.
 
@@ -10,7 +10,6 @@ install does not need a source checkout or a startup `.bat` file.
 | --- | --- |
 | A window with chat | Download the installer from the [latest release](https://github.com/Niko1221/Strata/releases/latest) ([steps](#the-app)) |
 | The terminal, or my coding tool | Run the one-line install, then `strata launch` ([steps](#the-terminal)) |
-| DeepSeek V4.1-Flash | Pick it in the app, or run `strata launch --family deepseek41` ([model page](MODELS.md#deepseek-v41-flash)) |
 
 [Requirements](#what-you-need) · [Desktop app](#the-app) · [Terminal](#the-terminal) ·
 [Update](#updating) · [Files and folders](#where-things-are-stored) · [Build from source](SOURCE_INSTALL.md)
@@ -19,8 +18,8 @@ install does not need a source checkout or a startup `.bat` file.
 
 | Computer | Guide |
 | --- | --- |
-| Windows 10/11 or Linux x86-64 with an NVIDIA RTX GPU | Use the app or the Terminal. The engine for your card is downloaded for you. [Older NVIDIA cards](OLDER_GPUS.md) use the CUDA 12 engine. DeepSeek V4.1-Flash runs on RTX 30, 40 and 50 cards in the app and the Terminal. |
-| Windows or Linux x86-64 with a supported AMD Radeon | [AMD guide](AMD_HIP.md), including the card-to-package table. DeepSeek V4.1-Flash runs on the Radeon AI PRO R9700 under Linux, in the app and the Terminal. |
+| Windows 10/11 or Linux x86-64 with an NVIDIA RTX GPU | Use the app or the Terminal. The engine for your card is downloaded for you. [Older NVIDIA cards](OLDER_GPUS.md) use the CUDA 12 engine. |
+| Windows or Linux x86-64 with a supported AMD Radeon | [AMD guide](AMD_HIP.md), including the card-to-package table. |
 | Linux x86-64 with Intel Arc | [Intel Arc guide](INTEL_ARC.md); install the driver/compute runtime and check model preparation requirements |
 | Apple Silicon Mac, macOS 15 or newer | [Mac guide](MAC.md). Intel Macs are not supported by the Mac package. |
 | AMD Ryzen AI Max / Strix Halo | [Strix Halo guide](STRIX_HALO.md) |
@@ -47,9 +46,7 @@ hardware drivers. Models and updates need an internet connection to download.
    graphics card with its size and one **Download** button, with progress and resume. If you already downloaded the
    engine file, choose **I already have the file** and it installs without internet. The Mac file keeps its small
    Metal engine inside.
-4. Choose a model and its storage folder, let it download, then chat. DeepSeek V4.1-Flash is in the model list on
-   the supported cards ([model page](MODELS.md#deepseek-v41-flash)); it has three sizes, an 8K context and a **Speed**
-   choice, Faster or Full quality.
+4. Choose a model and its storage folder, let it download, then chat.
 
 The `strata-engine-…` and `strata-control-…` archives on the release page are components, not installers. The
 installer is the same file for a first install and for an update. There is no Intel desktop installer yet; Intel Arc
@@ -68,13 +65,13 @@ Install once, then use `strata launch`. The Terminal includes Python and downloa
 **Linux / Mac**
 
 ```sh
-curl -fsSL https://github.com/Niko1221/Strata/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL --connect-timeout 15 --max-time 120 https://github.com/Niko1221/Strata/releases/latest/download/install.sh -o install.sh && sh install.sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/Niko1221/Strata/releases/latest/download/install.ps1 | iex
+irm -TimeoutSec 120 https://github.com/Niko1221/Strata/releases/latest/download/install.ps1 | iex
 ```
 
 On Windows, open a **new terminal** afterwards. On Linux and Mac, if `strata` is not found, use the full path printed

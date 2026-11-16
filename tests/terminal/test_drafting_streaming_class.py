@@ -104,10 +104,11 @@ class IQ3SOnTheClass(Base):
         for mode, drafter in (("mtp", "mtp"), ("off", "off")):
             self.assertEqual(self.apply(IQ3S, P2003, drafting=mode)[0].drafter, drafter)
 
-    def test_without_the_mtp_layer_auto_is_not_dflash2_either(self):
+    def test_without_the_mtp_layer_auto_starts_the_dflash2_drafter_on_disk(self):
+        # one drafter is picked; when its file is missing the other one stands in where it is on disk (never no drafter unless Off was chosen; 0.2.14)
         (self.data / "mtp" / "rt" / "experts.bin").unlink()
         d, args = self.apply(IQ3S, P2003)
-        self.assertEqual((d.drafter, d.note), ("off", drafting.NONE_HERE))
+        self.assertEqual((d.drafter, d.note), ("dflash2", drafting.NO_MTP))
         self.assertEqual(self.apply(IQ3S, P2003, drafting="dflash2")[0].drafter, "dflash2")
 
     def test_the_fetch(self):
@@ -204,7 +205,7 @@ class OtherSetsAndEntriesAreUnchanged(Base):
 
     def test_the_resident_strix_arc_and_metal_starts_are_what_they_were(self):
         self.put_tuned()
-        for hardware, name, conf in ((L620, IQ3S, "0.35"), (SPARK, V31, "0.35"), (STRIX, IQ3S, "0.35")):
+        for hardware, name, conf in ((L620, IQ3S, "0.55"), (SPARK, V31, "0.35"), (STRIX, IQ3S, "0.35")):      # l620: 0.55 since 11-08
             d, args = self.apply(name, hardware)
             self.assertEqual((d.drafter, flag(args, "--draft-model"), flag(args, "--draft-conf")), ("dflash2", str(drafting.tuned_path(self.data)), conf), (hardware, name))
         d, args = self.apply(Q4, ("metal", [], None))

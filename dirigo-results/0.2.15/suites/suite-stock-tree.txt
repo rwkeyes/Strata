@@ -1,0 +1,3 @@
+stock tree (<data>/strata-0.2.15-stock, v0.2.15)
+Ran 1542 tests in 615.392s
+OK (skipped=23)
