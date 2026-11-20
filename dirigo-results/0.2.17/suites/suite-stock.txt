@@ -1,0 +1,3 @@
+unittest discover -s terminal/serve -t terminal -p 'test_*.py'
+Ran 2081 tests in 755.246s
+OK (skipped=26)

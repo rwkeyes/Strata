@@ -4,7 +4,7 @@
 answer, on either the released install or this repository's source snapshot. Every word Strata uses is in the
 [glossary](GLOSSARY.md).
 
-These guides describe the tree in this repository: upstream Strata **v0.2.15** (engine **0.1.61**) plus this
+These guides describe the tree in this repository: upstream Strata **v0.2.17** (engine **0.1.63**) plus this
 fork's changes. For the fork's verified build, what was measured, and the evidence, read
 [DIRIGO.md](../DIRIGO.md).
 
