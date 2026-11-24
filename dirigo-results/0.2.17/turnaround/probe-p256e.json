@@ -1,0 +1,333 @@
+{
+ "summary": {
+  "label": "p256e",
+  "n": 12,
+  "ttft_ms": 794,
+  "wall_ms_per_request": 2276,
+  "requests_per_min": 26.36,
+  "engine_prefill_ms": 771,
+  "engine_decode_tps": 83.6,
+  "dead_time_ms": 23,
+  "dead_time_pairs": 12,
+  "first_token_kinds": [
+   "reasoning"
+  ],
+  "reused_prompts": 0
+ },
+ "rows": [
+  {
+   "ttft_ms": 1007.7489640098065,
+   "wall_ms": 2531.043043010868,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 653
+  },
+  {
+   "ttft_ms": 1000.9930829983205,
+   "wall_ms": 2751.04698096402,
+   "chunks": 128,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 93,
+   "think_chars": 583
+  },
+  {
+   "ttft_ms": 912.0579869486392,
+   "wall_ms": 2585.030813002959,
+   "chunks": 115,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 116,
+    "total_tokens": 728,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "stop",
+   "first": "reasoning",
+   "content_chars": 116,
+   "think_chars": 508
+  },
+  {
+   "ttft_ms": 793.9398860326037,
+   "wall_ms": 2210.312986979261,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 640
+  },
+  {
+   "ttft_ms": 793.8981340266764,
+   "wall_ms": 2154.6362939989194,
+   "chunks": 85,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 86,
+    "total_tokens": 698,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "stop",
+   "first": "reasoning",
+   "content_chars": 106,
+   "think_chars": 356
+  },
+  {
+   "ttft_ms": 793.7796260230243,
+   "wall_ms": 2454.0867579635233,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 653
+  },
+  {
+   "ttft_ms": 794.879672001116,
+   "wall_ms": 2246.521044988185,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 645
+  },
+  {
+   "ttft_ms": 794.6142220171168,
+   "wall_ms": 2257.0243490627035,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 659
+  },
+  {
+   "ttft_ms": 792.977656936273,
+   "wall_ms": 2219.082528958097,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 642
+  },
+  {
+   "ttft_ms": 793.6708129709587,
+   "wall_ms": 2764.2697020201012,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 612,
+    "completion_tokens": 128,
+    "total_tokens": 740,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 735
+  },
+  {
+   "ttft_ms": 794.2927939584479,
+   "wall_ms": 2295.9174329880625,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 613,
+    "completion_tokens": 128,
+    "total_tokens": 741,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 634
+  },
+  {
+   "ttft_ms": 801.2864030897617,
+   "wall_ms": 2161.5993960294873,
+   "chunks": 130,
+   "usage": {
+    "prompt_tokens": 613,
+    "completion_tokens": 128,
+    "total_tokens": 741,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    }
+   },
+   "finish": "length",
+   "first": "reasoning",
+   "content_chars": 0,
+   "think_chars": 609
+  }
+ ],
+ "engine": [
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 985,
+   "prefill_tps": 621.5,
+   "gen": 128,
+   "decode_ms": 1542,
+   "decode_tps": 83.0
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 979,
+   "prefill_tps": 625.4,
+   "gen": 128,
+   "decode_ms": 1769,
+   "decode_tps": 72.4
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 889,
+   "prefill_tps": 688.7,
+   "gen": 116,
+   "decode_ms": 1693,
+   "decode_tps": 68.5
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 770,
+   "prefill_tps": 794.4,
+   "gen": 128,
+   "decode_ms": 1436,
+   "decode_tps": 89.1
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 770,
+   "prefill_tps": 794.6,
+   "gen": 86,
+   "decode_ms": 1380,
+   "decode_tps": 62.3
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 770,
+   "prefill_tps": 794.5,
+   "gen": 128,
+   "decode_ms": 1680,
+   "decode_tps": 76.2
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 772,
+   "prefill_tps": 793.2,
+   "gen": 128,
+   "decode_ms": 1471,
+   "decode_tps": 87.0
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 771,
+   "prefill_tps": 793.4,
+   "gen": 128,
+   "decode_ms": 1482,
+   "decode_tps": 86.4
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 769,
+   "prefill_tps": 795.4,
+   "gen": 128,
+   "decode_ms": 1446,
+   "decode_tps": 88.5
+  },
+  {
+   "prompt": 612,
+   "reused": 0,
+   "read": 771,
+   "prefill_tps": 794.2,
+   "gen": 128,
+   "decode_ms": 1991,
+   "decode_tps": 64.3
+  },
+  {
+   "prompt": 613,
+   "reused": 0,
+   "read": 771,
+   "prefill_tps": 795.1,
+   "gen": 128,
+   "decode_ms": 1521,
+   "decode_tps": 84.2
+  },
+  {
+   "prompt": 613,
+   "reused": 0,
+   "read": 778,
+   "prefill_tps": 788.1,
+   "gen": 128,
+   "decode_ms": 1380,
+   "decode_tps": 92.7
+  }
+ ]
+}

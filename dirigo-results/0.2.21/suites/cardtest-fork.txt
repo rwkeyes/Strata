@@ -1,0 +1,47 @@
+[12:59:42] === card window for d0221 (/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21) on :8097 (engine log /media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/strata-coder-iq1_m-sycl-tuned.log)
+[12:59:42] incumbent: active vram GPUActive: 2247784 kB
+[12:59:50] card released: vram GPUActive: 2226552 kB
+[12:59:50] --- ctest (kernel parity battery, AOT bmg-g31)
+83% tests passed, 19 tests failed out of 113
+The following tests FAILED:
+  failed: native_expert_parity_new_iq1_m_iq4_nl native_expert_parity_new_iq2_s_iq4_nl native_expert_parity_new_iq2_s_q2_0 native_expert_parity_new_iq2_s_q5_0 native_expert_parity_new_iq2_s_q8_0 native_expert_parity_new_iq2_xs_iq4_nl native_expert_parity_new_iq2_xs_q2_0 native_expert_parity_new_iq2_xs_q5_0 native_expert_parity_new_iq2_xs_q8_0 native_expert_parity_new_iq2_xxs_iq4_nl native_expert_parity_new_iq2_xxs_q2_0 native_expert_parity_new_iq2_xxs_q5_0 native_expert_parity_new_iq2_xxs_q8_0 native_expert_parity_new_iq3_xxs_iq4_nl native_expert_parity_new_iq3_xxs_q2_0 native_expert_parity_new_iq3_xxs_q5_0 native_expert_parity_new_iq3_xxs_q8_0 native_expert_parity_new_iq4_xs_iq4_nl native_expert_parity_new_q2_0_iq4_nl [13:03:29]   ctest rc=8
+[13:03:29] test server pid 594347, waiting on /v1/status loaded
+[13:03:58]   still loading 30 s (vram GPUActive: 4770160 kB)
+[13:04:10] loaded after 42 s
+[13:04:10] --- engine's own lines from this start:
+[strata] 2026-11-24 13:03:30 engine started: /home/bob/bin/strata-sycl-host.sh --serve --pack /home/bob/XeStrata-data/packs/coder-iq1_m --native /home/bob/strata-models/IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf --ple-gguf /home/bob/strata-models/IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00002-of-00002.gguf --expert-profile /media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/data/expert-profile-mine.bin --expert-cache auto --stream-experts --prefill auto --prompt-cache 6 --prompt-cache-every 4096 --batch 0 --spec 6 --spec-min-p 0.5 --mtp /home/bob/XeStrata-data/mtp/rt --mtp-draft-vocab /media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/data/draft_vocab_en.bin --mtp-window 8192 --max-context 131072 --kv int8 --kv-resident 32768 --vram-reserve-mib 700 --conversation-cache-mib 2048
+strata generate: KV streaming: 32768 of 131072 cells per QSA layer in VRAM, the K/V in 1.55 GiB of pinned RAM
+strata generate: pre-filled 12288 of 12288 slots from the profile in 23.1 s (1087 MB/s); slot 0 verified
+strata generate: 1200 of 0 experts missing from VRAM (+ 1200 in the prompt loan's slots) mirrored in pinned host memory (2.32 GiB, 2.9 s); the GPU reads them over PCIe
+strata generate: session is up (engine 0.1.67)
+[13:04:10] --- /v1/status:
+{"service": "strata", "model": "qwen3.8-flash-next-coder-iq1_m", "loaded": true, "auto_load": true, "structured_output": {"formats": ["json_object", "json_schema"], "method": "prompt_and_validate", "constrained_decoding": false, "stream_buffered": true}, "engine": "0.1.67", "started": 1795543448, "uptime_s": 1, "cache_max_tokens": 131072, "context": {"native": 131072, "max_positions": 131072}, "co
+[13:04:10] --- minefield (5 dequant probes)
+strata-minefield: http://127.0.0.1:8097  model=qwen3.8-flash-next-coder-iq1_m  max_tokens=256
+  capital   PASS       0.7s  finish=stop  answer='Paris'
+  decimal   PASS       0.5s  finish=stop  answer='9.9'
+  nonempty  PASS       0.3s  finish=stop  answer='ok'
+  count_r   PASS       0.4s  finish=stop  answer='3'
+  reverse   PASS       0.2s  finish=stop  answer='olleh'
+== 5/5 scored
+== wrote /home/bob/strata-0215-minefield-d0221.json
+[13:04:12] --- card-gate (one-token 200, code answer, needle, over-window refusal)
+GATE one-token: HTTP 200 in 0.4s
+  finish=length usage={'prompt_tokens': 55, 'completion_tokens': 1, 'total_tokens': 56, 'prompt_tokens_details': {'cached_tokens': 0}, 'completion_tokens_details': {'reasoning_tokens': 1}}
+  /v1/status engine: 0.1.67 | model: qwen3.8-flash-next-coder-iq1_m
+CODE: HTTP 200 in 2.6s len=340
+NEEDLE-LONG: HTTP 200 in 24.8s prompt_tokens=28113 finish=stop reasoning_chars=313 correct=True
+  answer: The pressure gauge calibration certificate is filed under reference KX-9182.
+OVER-WINDOW: HTTP 400 in 0.3s chars=752284 (filler x8177)
+  body: {"error": {"type": "invalid_request_error", "message": "request exceeds the context window: prompt (163599 tokens) leaves no room to answer in the context (131072); requests are never truncated"}}
+RESULT: PASS
+[13:04:40] --- the levers this tree carries (/v1/tuning, then a live retune; stock answers 404 = expected)
+modes: {'mode': 'shadow', 'code_tune': 'off', 'thinking': 'on', 'short_answer': None}
+tune: 200 {'adapt_every': 6, 'spec_min_p': 0.7}
+[13:04:40] --- 24-token extraction (the answer must not be eaten by a reasoning channel)
+extraction: content='2024-06-09' reasoning_chars=0 finish=stop
+  usage: 11 completion tokens
+[13:04:40] RESULT ctest=8 minefield=0 gate=0 lever=0 extraction=0
+[13:04:40] restore: stopping the test server (pid 594347)
+[13:04:42] restore: vram used GPUActive: 2240464 kB
+[13:05:21] restore: :8095 answers 200 - {"service": "strata", "model": "qwen3.8-flash-next-coder-iq1_m", "loaded": true, "auto_load": true, "structured_output": {"formats": ["json_object", "json_schema"], "method": "prompt_and_validate", "c

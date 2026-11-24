@@ -1,0 +1,135 @@
+[strata] engine priority: nice +5 (this PC has built-in Radeon graphics that usually draw the desktop; STRATA_ENGINE_NICE=0 turns it off)
+.[strata] engine priority: nice +5 (this PC has built-in Radeon graphics that usually draw the desktop; STRATA_ENGINE_NICE=0 turns it off)
+.[strata] engine priority: nice +5 (this PC has built-in Radeon graphics that usually draw the desktop; STRATA_ENGINE_NICE=0 turns it off)
+.............sss.....s[strata] done: 4 tokens in 0 s (no speed) (length, cancel=False)
+[strata] the reply reached max tokens while still thinking, so it has no answer: a thinking budget (reasoning_budget_tokens, in the request or in strata-<model>.json for every request) leaves room to answer
+......[strata] done: 3 tokens in 0 s (no speed) (stop, cancel=False)
+[strata] done: 3 tokens in 0 s (no speed) (stop, cancel=False)
+..........[strata] api_keys: "hermes" may run 2 at once, but only 1 of the 2 slots are its reach (the rest are reserved): the limit that holds is the reach
+.......[strata] reading the prompt: 4 of max 64 tokens, 4.4 tok/s, 1 s
+[strata] reading the prompt: 8 of max 64 tokens, 3.8 tok/s, 2 s
+[strata] answering: 12 of max 64 tokens, 3.6 tok/s, 4 s
+[strata] done: 13 tokens in 4 s (3.6 tok/s) (stop, cancel=False)
+..............................................................................................................................sssss....................................................................................................................................................................................../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_hy4_serve_e2e.py:117: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  cls.proc = None
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............................../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=14 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+..../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=15 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.....................................................s/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_forced_call.py:55: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.check("low", "")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_forced_call.py:52: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.check("none", EMPTY_THINK)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_image_usage.py:49: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_image_usage.py:58: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_image_usage.py:43: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_image_usage.py:65: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............................................................./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:113: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go, replies=5)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:73: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:128: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:61: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go, replies=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go, replies=len(asks))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:122: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:87: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_reasoning_fields.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  self.run_with(go, replies=len(cases))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./usr/lib/python3.12/unittest/case.py:589: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_slot_routing.py:87: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  t1, t2, t3 = self.run_session(parallel)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_slot_routing.py:94: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  t1, t2, t3 = self.run_session(2, between=title)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_slot_routing.py:169: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  p1, p2, k2, lines = self.wrapped_up_chat(parallel)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_slot_routing.py:181: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  p1, p2, k2, lines = self.wrapped_up_chat(1)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+..../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_inkling_slot_routing.py:101: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  t1, t2, t3 = self.run_session(1, between=title)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.................................................../usr/lib/python3.12/unittest/case.py:669: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  function, args, kwargs = self._cleanups.pop()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...................................................................................................[strata] MCP image cache unavailable: disk full
+.............................................................................................................#2518 retained prefix over 12 branching follow-ups: before 96000 tokens, after 115200 tokens
+...............................................................................................................................................................................................................................................................................................................................s...............................................................................................................Exception in thread Thread-2970 (spam):
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+.    self.run()
+  File "/usr/lib/python3.12/threading.py", line 1010, in run
+    self._target(*self._args, **self._kwargs)
+  File "/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/test_serve_robustness.py", line 255, in spam
+    w.write(f"[strata] progress line {i} " + "x" * 40 + "\n")
+BrokenPipeError: [Errno 32] Broken pipe
+/usr/lib/python3.12/threading.py:1075: ResourceWarning: unclosed file <_io.TextIOWrapper name=10 mode='w' encoding='utf-8'>
+  self._invoke_excepthook(self)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./usr/lib/python3.12/threading.py:1014: ResourceWarning: unclosed file <_io.TextIOWrapper name=12 mode='w' encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...........................................................................................................................................strata serve: AMD: HIP_PATH=Z:\definitely\not\here does not exist: not passed to the engine
+.strata serve: AMD: HIP_PATH=/home/bob/.hermes/cache/scratch/tmpi8fxnbdx/TheRock/build does not exist: not passed to the engine
+strata serve: AMD: HIP_DEVICE_LIB_PATH=/home/bob/.hermes/cache/scratch/tmpi8fxnbdx/TheRock/build does not exist: not passed to the engine
+.strata serve: AMD: TEMP=/home/bob/.hermes/cache/scratch/tmpelw0cih8/no/such/dir is not writable: using /home/bob/.hermes/cache/scratch/tmpelw0cih8/tmp
+................................................................................................................................./usr/lib/python3.12/unittest/case.py:589: ResourceWarning: unclosed <socket.socket fd=9, family=2, type=1, proto=0, laddr=('127.0.0.1', 41527)>
+  if method() is not None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...........................no room on this server for 23500 MiB on GPU 0 and 76G of RAM: the hold needs 76.0 GB
+...................................................................................................................................................................................................................................................................................................................................s...ss......................s....................................................................................................................................................................................................................................................................................................................................../media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=15 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=16 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=14 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+......................................./usr/lib/python3.12/unittest/suite.py:107: ResourceWarning: unclosed file <_io.TextIOWrapper name=11 encoding='utf-8'>
+  for index, test in enumerate(self):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.12/unittest/suite.py:107: ResourceWarning: unclosed file <_io.TextIOWrapper name=12 encoding='utf-8'>
+  for index, test in enumerate(self):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+..........................................s.......................................................s................ssssssssss/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=14 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/media/bob/3d651e2c-e9a4-4758-ba77-863725fe3731/strata-0.2.21/terminal/serve/lifeline.py:59: ResourceWarning: unclosed file <_io.TextIOWrapper name=15 encoding='utf-8'>
+  fn, future = self._jobs.get()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+....
+----------------------------------------------------------------------
+Ran 2371 tests in 871.946s
+
+OK (skipped=27)

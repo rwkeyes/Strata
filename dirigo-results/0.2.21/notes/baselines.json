@@ -1,0 +1,267 @@
+{
+ "generated": "2026-11-20",
+ "box": "vega, Arc Pro B70 32 GB, Qwen3.8-Flash-Next Coder IQ1_M (coder-iq1_m)",
+ "method": "probe = ~/bin/strata-turnaround-probe.py (12 unique 613-token prompts, sequential); guidellm = 512-in/128-out, 45 s per level, mean of two runs where present",
+ "versions": {
+  "0.2.12": {
+   "engine": "0.1.58",
+   "tree": "strata-0.2.12",
+   "probe": {
+    "prefill_ms": 756,
+    "dead_ms": 24,
+    "wall_ms": 2262,
+    "decode_median": 87.7,
+    "decode_runs": 4,
+    "n": 47
+   },
+   "guidellm_ttft_median": {
+    "1": 753,
+    "2": 2484,
+    "4": 6449,
+    "8": 9759
+   }
+  },
+  "0.2.14": {
+   "engine": "0.1.60",
+   "tree": "strata-0.2.14",
+   "probe": {
+    "prefill_ms": 771,
+    "dead_ms": 23,
+    "wall_ms": 2256,
+    "decode_median": 86.1,
+    "decode_runs": 2,
+    "n": 22
+   }
+  },
+  "0.2.15": {
+   "engine": "0.1.61",
+   "tree": "strata-0.2.15",
+   "probe": {
+    "prefill_ms": 771,
+    "dead_ms": 24,
+    "wall_ms": 2262,
+    "decode_median": 87.7,
+    "decode_runs": 2,
+    "n": 23
+   },
+   "guidellm_ttft_median": {
+    "1": 739,
+    "2": 2567,
+    "4": 6408,
+    "8": 8785
+   }
+  },
+  "0.2.17": {
+   "engine": "0.1.63",
+   "tree": "strata-0.2.17",
+   "probe": {
+    "prefill_ms": 770,
+    "dead_ms": 23,
+    "wall_ms": 2352,
+    "decode_median": 80.8,
+    "decode_runs": 7,
+    "n": 81
+   },
+   "suite": "Ran 2106 tests in 791.705s OK (skipped=26)",
+   "guidellm_ttft_median": {
+    "1": 741,
+    "2": 2746,
+    "4": 6817,
+    "8": 9260
+   }
+  },
+  "0.2.17-stock": {
+   "engine": "0.1.63",
+   "tree": "strata-0.2.17-stock",
+   "probe": {
+    "prefill_ms": 993,
+    "dead_ms": 22,
+    "wall_ms": 2601,
+    "decode_median": 80.0,
+    "decode_runs": 2,
+    "n": 23
+   },
+   "suite": "Ran 2081 tests in 755.246s OK (skipped=26)",
+   "guidellm_ttft_median": {
+    "1": 970,
+    "2": 3040,
+    "4": 7529,
+    "8": 9386
+   }
+  },
+  "0.2.16-stock": {
+   "engine": "0.1.62",
+   "tree": "strata-0.2.16-stock",
+   "probe": {
+    "prefill_ms": 990,
+    "dead_ms": 22,
+    "wall_ms": 2560,
+    "decode_median": 77.7,
+    "decode_runs": 2,
+    "n": 22
+   }
+  },
+  "0.2.21": {
+   "engine": "0.1.67",
+   "tree": "strata-0.2.21",
+   "branch": "release/0.2.21",
+   "probe": {
+    "prefill_ms": 753,
+    "dead_ms": 23,
+    "wall_ms": 2230,
+    "decode_median": 86.8
+   },
+   "probe_runs": [
+    {
+     "prefill_ms": 754,
+     "decode": 86.8,
+     "wall_ms": 2232,
+     "acceptance_pct": 65.0
+    },
+    {
+     "prefill_ms": 752,
+     "decode": 86.8,
+     "wall_ms": 2229,
+     "acceptance_pct": 65.0
+    }
+   ],
+   "suite": "2371 OK (skipped 27) in 872 s",
+   "ctest": "19 failed of 113 - the same native_expert_parity_new_* set as v0.2.17 (19 of 97)",
+   "card_gate": "PASS; minefield 5/5; levers answered; extraction '2024-06-09', 0 reasoning chars",
+   "note": "first fork build since 0.2.12 with production-level prefill: the +1.9 % step from engine 0.1.60 is gone",
+   "guidellm": {
+    "arms": [
+     "gl0221",
+     "gl0221b"
+    ],
+    "median_ttft_ms": {
+     "1": 727,
+     "2": 2535,
+     "4": 6102,
+     "8": 9790
+    },
+    "agg_tok_s": {
+     "1": 65.4,
+     "2": 68.3,
+     "4": 68.3,
+     "8": 68.3
+    },
+    "vs_production_pct": {
+     "1": -3.5,
+     "2": 2.1,
+     "4": -5.4,
+     "8": 0.3
+    },
+    "vs_0.2.17_pct": {
+     "1": -1.6,
+     "2": -6.2,
+     "4": -7.2,
+     "8": 5.5
+    },
+    "note": "c=8 delta is inside this harness's repeat swing; c=2/c=4 improvement tracks the prefill recovery"
+   }
+  },
+  "0.2.21-stock": {
+   "engine": "0.1.67",
+   "tree": "strata-0.2.21-stock",
+   "probe": {
+    "prefill_ms": 965,
+    "dead_ms": 21,
+    "wall_ms": 2442,
+    "decode_median": 86.95
+   },
+   "probe_runs": [
+    {
+     "prefill_ms": 962,
+     "decode": 87.1,
+     "wall_ms": 2438,
+     "acceptance_pct": 65.8
+    },
+    {
+     "prefill_ms": 968,
+     "decode": 86.8,
+     "wall_ms": 2447,
+     "acceptance_pct": 65.8
+    }
+   ],
+   "note": "stock v0.2.21, same pack/flags/profile"
+  }
+ },
+ "workload_shapes": {
+  "_note": "Not part of the per-version comparison set (arc-compare matches the 512-token probe shape); these answer 'what shape costs what' for planning.",
+  "long_prompt_8000in_32out": {
+   "tree": "strata-0.2.12",
+   "engine": "0.1.58",
+   "ttft_ms": 5063,
+   "prefill_ms": 5020,
+   "prefill_tok_s": 1594,
+   "dead_ms": 42,
+   "decode_tps": 71.9,
+   "wall_ms": 5494,
+   "n": 8,
+   "probe": "~/strata-0217-longprompt/probe-lp8k.json",
+   "requests_per_min": 10.92
+  },
+  "short_prompt_512in_32out": {
+   "tree": "strata-0.2.12",
+   "engine": "0.1.58",
+   "ttft_ms": 780,
+   "prefill_ms": 756,
+   "dead_ms": 23,
+   "decode_tps": 90.2,
+   "wall_ms": 1129,
+   "n": 8,
+   "probe": "~/strata-0217-longprompt/probe-lp512.json",
+   "requests_per_min": 53.14
+  },
+  "finding": "at 8 K input, 99 % of TTFT is prefill; decode shape barely matters. No config lever moves cold prefill - plan with prefill tok/s (1,594 at 8 K) and prompt-cache reuse."
+ },
+ "draft_models": {
+  "_note": "Engine-level generate runs (128 tokens, same continuation, production flags), not server arms - serve/server.py builds the engine argv itself and ignores --mtp-draft-vocab/--mtp-q4 from a --conf config.",
+  "en_production": {
+   "head_tokens": 40525,
+   "head_mib": 81.2,
+   "mtp_ms_per_round": [
+    4.26,
+    4.37
+   ],
+   "decode_tps": [
+    102.34,
+    101.9
+   ]
+  },
+  "fr": {
+   "head_tokens": 46211,
+   "head_mib": 92.5,
+   "mtp_ms_per_round": [
+    4.38
+   ],
+   "decode_tps": [
+    102.1
+   ]
+  },
+  "cyrillic": {
+   "head_tokens": 58963,
+   "head_mib": 118.1,
+   "mtp_ms_per_round": [
+    4.64
+   ],
+   "decode_tps": [
+    101.07
+   ]
+  },
+  "full": {
+   "head_tokens": 106299,
+   "head_mib": 212.9,
+   "mtp_ms_per_round": [
+    5.58
+   ],
+   "decode_tps": [
+    97.86
+   ]
+  },
+  "q4": "refused: --mtp-q4 head needs STRATA_Q6_PLANAR=0 (packed Q6_K head layout)",
+  "identical_across_vocabs": "window sizes T3:41 T6:2, accepted per round 0:1 1:2 2:41, 2.98 tokens/round in every arm",
+  "spec_is_a_cap": "engine picks 3-token windows by draft confidence; --spec 6 rarely binds, which is why spec 2/4/6 measure the same"
+ }
+}
