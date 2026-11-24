@@ -2153,20 +2153,32 @@ class GpuChoice(unittest.TestCase):
         self.assertIs(vision_env(plain, env), env)          # no cuda_device: the engine's environment, unchanged
 
     def test_hip_ordinal(self):
-        """#325: on Windows the HIP ordinal setup resolved wins over the config's "gpu" (an iGPU takes HIP's 0)."""
+        """#325: on Windows the HIP ordinal setup resolved wins over the config's "gpu" (an iGPU takes HIP's 0).
+
+        The split case used to read the HOST's topology: on a machine with a built-in Radeon, ordered_gpus()
+        deliberately moves the integrated chip first (#1576) and the config's list comes back reordered, so this
+        test failed on exactly the AMD machines Strata runs on and passed where no AMD card could be probed.  The
+        probes are stubbed for the "cannot measure" rule, and the documented reorder is asserted through the same
+        seam instead of being left to the machine.
+        """
         from unittest import mock
-        from serve import server
+        from serve import server as srv
         from serve.server import child_env
-        # not the cards of the box running the test (p2006's 780M is in KFD: the layer split put the iGPU first, a plain HIP config got
-        # the automatic card list)
-        with mock.patch.object(server, "hip_gpu_archs", lambda *a, **k: {}), mock.patch.object(server, "hip_auto_devices", lambda cfg, env: None):
-            self.assertEqual(child_env({"backend": "hip", "gpu": 1})["HIP_VISIBLE_DEVICES"], "1")       # Linux: KFD order
-            self.assertEqual(child_env({"backend": "hip", "hip_ordinal": 1})["HIP_VISIBLE_DEVICES"], "1")
-            self.assertEqual(child_env({"backend": "hip", "gpu": 0, "hip_ordinal": 1})["HIP_VISIBLE_DEVICES"], "1")
+        self.assertEqual(child_env({"backend": "hip", "gpu": 1})["HIP_VISIBLE_DEVICES"], "1")       # Linux: KFD order
+        self.assertEqual(child_env({"backend": "hip", "hip_ordinal": 1})["HIP_VISIBLE_DEVICES"], "1")
+        self.assertEqual(child_env({"backend": "hip", "gpu": 0, "hip_ordinal": 1})["HIP_VISIBLE_DEVICES"], "1")
+        with mock.patch.object(srv, "hip_gpu_archs", return_value=None), \
+                mock.patch.object(srv, "hip_speed_scores", return_value=None):
             self.assertEqual(child_env({"backend": "hip", "gpu": [1, 0], "hip_ordinal": 2})["HIP_VISIBLE_DEVICES"],
-                             "1,0")                                          # a layer split keeps its list
-            self.assertEqual(child_env({"backend": "hip", "gpu": 0, "hip_ordinal": "x"})["HIP_VISIBLE_DEVICES"], "0")
-            plain = child_env({"backend": "hip"})
+                             "1,0")                                     # a layer split keeps its list
+        # ... unless one of them is built-in graphics: it takes the first layers and never the last stage (#1576),
+        # and "gpu_order": "as_given" is the documented escape hatch.
+        split = {"backend": "hip", "gpu": [1, 0]}
+        archs, scores = {0: "gfx1036", 1: "gfx1100"}, {0: 100, 1: 900}
+        self.assertEqual(srv.ordered_gpus(split, archs=archs, scores=scores), [0, 1])
+        self.assertEqual(srv.ordered_gpus(dict(split, gpu_order="as_given"), archs=archs, scores=scores), [1, 0])
+        self.assertEqual(child_env({"backend": "hip", "gpu": 0, "hip_ordinal": "x"})["HIP_VISIBLE_DEVICES"], "0")
+        plain = child_env({"backend": "hip"})
         self.assertEqual(plain.get("HIP_VISIBLE_DEVICES"), os.environ.get("HIP_VISIBLE_DEVICES"))
 
 

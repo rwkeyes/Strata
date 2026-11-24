@@ -572,7 +572,9 @@ def sampling_defaults_from_config(cfg: dict) -> dict:
         elif key == "strata_tune":           # a saved tuning's per-request settings (strata_control/presets.py)
             if not isinstance(value, dict):
                 raise SystemExit(f"[strata] config sampling.strata_tune={value!r}: expected an object")
-            out[key] = {k: v for k, v in value.items() if k in ("pcie_frac", "spec_min_p", "aux_cpus")}
+            # Dirigo: a client may also pin the draft depth ("spec") and prompt lookup ("lookup") per request;
+            # the fork accepts both keys, so they are kept here instead of being dropped as unknown.
+            out[key] = {k: v for k, v in value.items() if k in ("pcie_frac", "spec_min_p", "aux_cpus", "spec", "lookup")}
         elif key == "experimental_speed_projection":
             if not isinstance(value, bool):
                 raise SystemExit(f"[strata] config sampling.experimental_speed_projection={value!r}: expected true or "

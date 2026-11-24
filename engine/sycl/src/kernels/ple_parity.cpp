@@ -328,20 +328,41 @@ int main(int argc, char** argv) {
     PleCapture cap;
     bool preflight_done = false;
     if (selftest || check_fixtures) {
+        // A REQUIRED fixture that is simply not on this box is a SKIP (exit 77, SKIP_RETURN_CODE in CMake), not
+        // a failure: the Q2_0 shard-2 GGUF, the dense pack and the ggml capture are large, versioned artifacts
+        // that are not shipped in the tree.  A fixture that IS present but wrong (truncated, wrong geometry) stays
+        // a hard error (exit 2), because a test that passes by comparing against nothing is the failure mode this
+        // project keeps re-learning.
+        if (file_size(gguf.c_str()) < 0) {
+            std::fprintf(stderr, "ple_parity SKIP: the PLE table GGUF is not on this box: %s\n"
+                                 "  (point -DSTRATA_PLE_GGUF at the Q2_0 shard-2 file to run the table and block checks)\n",
+                         gguf.c_str());
+            return 77;
+        }
         if (!table.open(gguf, err) || table.rows() != o::kTableRows ||
             file_size(gguf.c_str()) != (long long) o::kTableDataStart + (long long) o::kTableRows * k::PLE_ROW_BYTES) {
-            std::fprintf(stderr, "ple_parity: required PLE table is missing or incompatible: %s (%s)\n", gguf.c_str(), err.c_str());
+            std::fprintf(stderr, "ple_parity: required PLE table is present but incompatible: %s (%s)\n", gguf.c_str(), err.c_str());
             return 2;
         }
         const uint64_t pack_needed = std::max({o::kKeyCodesOffset + o::kKeyCodesBytes,
             o::kKeyScalesOffset + o::kKeyScalesBytes, o::kValueOffset + o::kValueBytes});
         const long long pack_size = file_size((pack + "/dense.bin").c_str());
-        if (pack_size < 0 || (uint64_t) pack_size < pack_needed) {
-            std::fprintf(stderr, "ple_parity: required dense pack is missing or truncated: %s/dense.bin\n", pack.c_str());
+        if (pack_size < 0) {
+            std::fprintf(stderr, "ple_parity SKIP: the dense pack is not on this box: %s/dense.bin\n", pack.c_str());
+            return 77;
+        }
+        if ((uint64_t) pack_size < pack_needed) {
+            std::fprintf(stderr, "ple_parity: required dense pack is present but truncated: %s/dense.bin\n", pack.c_str());
             return 2;
         }
+        if (file_size(in_bin.c_str()) < 0 || file_size(out_bin.c_str()) < 0) {
+            std::fprintf(stderr, "ple_parity SKIP: the ggml block capture is not on this box: %s / %s\n",
+                         in_bin.c_str(), out_bin.c_str());
+            return 77;
+        }
         if (!load_capture(in_bin.c_str(), out_bin.c_str(), cap)) {
-            std::fprintf(stderr, "ple_parity: required block fixtures are missing, truncated or incompatible: %s / %s\n", in_bin.c_str(), out_bin.c_str());
+            std::fprintf(stderr, "ple_parity: required block fixtures are present but truncated or incompatible: %s / %s\n",
+                         in_bin.c_str(), out_bin.c_str());
             return 2;
         }
         preflight_done = true;

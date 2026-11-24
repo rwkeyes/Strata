@@ -427,8 +427,15 @@ int run(int fmt, int64_t ctx, int64_t nq, int reps) {   // fmt 1 int8, 0 fp16, 2
         std::printf("DECODEGRAPH fmt=%d ctx=%lld nq=%lld us=%.3f\n",
                     fmt, (long long) ctx, (long long) nq, times[times.size() / 2]);
     }
-    const bool ok1 = err_new <= std::max(4.0 * err_old, 1e-6 * ref_scale) && ok_pc;
-    const bool ok2 = diff <= 1e-4 * scale;
+    // On Battlemage the int8 arm (fmt 1) runs the ESIMD int8 DPAS kernel (qsa_prompt_attn_esimd.dp.cpp), not the XMX
+    // kernel: Q and P enter as hi+lo int8 (2 levels, ~16 bits; error ~1.5e-5 of the head's largest value), so its output
+    // sits ~1e-4 of the output scale from FP64 and from the FP32 kernel - the kernel's design precision, not a defect.
+    // The fp16 and q4_0 arms run the XMX kernel (~22-bit halves) and keep the strict bar.  A wrong int8 scale or
+    // zero-point is O(1e-2) or worse (~30x this bound), so the int8 bar still fails a real bug loudly.
+    const double rel_fp64 = fmt == 1 ? 3e-4 : 1e-6;   // err_new vs FP64, as a fraction of ref_scale
+    const double rel_old  = fmt == 1 ? 3e-4 : 1e-4;   // new vs old, as a fraction of scale
+    const bool ok1 = err_new <= std::max(4.0 * err_old, rel_fp64 * ref_scale) && ok_pc;
+    const bool ok2 = diff <= rel_old * scale;
     std::printf("%s %s ctx %lld, %lld queries: vs FP64 old %.3g new %.3g (output scale %.3g); new vs old %.3g (%.2g of "
                 "scale); %.3f -> %.3f ms per chunk (%.2fx)\n",
                 ok1 && ok2 ? "PASS" : "FAIL", fmt == 2 ? "q4_0" : fmt == 1 ? "int8" : "fp16", (long long) ctx, (long long) nq, err_old,

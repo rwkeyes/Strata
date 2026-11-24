@@ -307,7 +307,14 @@ add_library(strata_prefill STATIC ${_prefill}
             ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/xmx_moe.dp.cpp         # A770 port: grouped XMX expert GEMM
             ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/esimd_moe.dp.cpp)       # 151-b70: fused int8 DPAS expert products (ESIMD, Battlemage)
 target_compile_options(strata_prefill PUBLIC -qmkl=sequential)
-target_link_options(strata_prefill PUBLIC -qmkl=sequential)
+# oneMKL: this port needs ONLY the BLAS domain. Checked with `nm -D --undefined-only` against the runtime
+# bundle - the engine's undefined symbols resolve to libmkl_sycl_blas alone - but -qmkl=sequential links all
+# eight SYCL domains (blas, vm, rng, sparse, dft, lapack, stats, data_fitting), 278 MB raw / 58 MB in the
+# image, and the loader then requires every one of them present. Keep the compile flag for the include paths
+# and device-side bits; narrow the link to the domains actually called.  (Dirigo payload patch, carried
+# forward from the v0.1.44.1 payload build; re-check it on every tag - the DT_NEEDED list is the gate.)
+target_link_options(strata_prefill PUBLIC
+  -L$ENV{MKLROOT}/lib -lmkl_sycl_blas -lmkl_intel_lp64 -lmkl_sequential -lmkl_core)
 target_link_libraries(strata_prefill PUBLIC strata_engine)
 
 # Optional TLA data movement for exact FP32 sparse prompt attention on B70.
@@ -530,9 +537,10 @@ if(STRATA_SYCL_PARITY)   # (the option is declared above, next to STRATA_OWN_CPU
   else()
     message(STATUS "STRATA SYCL tests: no python3 with numpy found - iq_parity and its fixtures are not registered")
   endif()
-  # ple: real inputs (the Q2_0 shard-2 GGUF, the dense pack, the ggml capture); a missing one is a hard error INSIDE
-  # the test, as in the top-level build.  The working directory is the engine root, so the relative defaults resolve
-  # there.  Point it at your files with -DSTRATA_PLE_GGUF=<shard 2 .gguf> and -DSTRATA_PLE_FIXTURE_DIR=<dir>.
+  # ple: real inputs (the Q2_0 shard-2 GGUF, the dense pack, the ggml capture).  A fixture that is ABSENT is a
+  # SKIP (exit 77, SKIP_RETURN_CODE below); one that is present but wrong stays a hard error INSIDE the test, as in
+  # the top-level build.  The working directory is the engine root, so the relative defaults resolve there.  Point
+  # it at your files with -DSTRATA_PLE_GGUF=<shard 2 .gguf> and -DSTRATA_PLE_FIXTURE_DIR=<dir>.
   set(STRATA_PLE_GGUF "" CACHE FILEPATH "Q2_0 shard 2 GGUF that ple_parity reads (default: ../../Q2_0/... from the engine root)")
   set(STRATA_PLE_FIXTURE_DIR "${STRATA_ROOT}/bench/micro" CACHE PATH
       "Directory containing required ple_in.bin and ple_out.bin parity fixtures")
@@ -546,6 +554,7 @@ if(STRATA_SYCL_PARITY)   # (the option is declared above, next to STRATA_OWN_CPU
   add_executable(ple_reader_test ${STRATA_ROOT}/src/ngram/ple_reader_test.cpp)
   target_link_libraries(ple_reader_test PRIVATE strata_kernels)
   add_test(NAME ple_reader_selftest COMMAND ple_reader_test --selftest)
+  set_tests_properties(ple_parity PROPERTIES SKIP_RETURN_CODE 77)
   # 0.1.31: the IQ kernels that decode a weight part once for every column/entry, bitwise vs the per-column ones
   # (no --selftest flag: it runs its checks by default), and the rewritten per-hit/grouped expert kernels vs the
   # previous ones, bitwise
